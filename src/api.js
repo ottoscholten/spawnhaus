@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:3001';
+const BASE = '';
 
 export const getTasks = (p) =>
   fetch(`${BASE}/api/tasks?projectPath=${encodeURIComponent(p)}`).then(r => r.json());
@@ -45,11 +45,11 @@ export const createTerminal = (cwd, command, message, taskId, projectPath) =>
     body: JSON.stringify({ cwd, command, message, taskId, projectPath }),
   }).then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); return d; });
 
-export const getTaskTerminal = (taskId) =>
-  fetch(`${BASE}/api/terminal/task/${encodeURIComponent(taskId)}`).then(r => r.json());
+export const getTaskTerminal = (taskId, projectPath) =>
+  fetch(`${BASE}/api/terminal/task/${encodeURIComponent(taskId)}?projectPath=${encodeURIComponent(projectPath)}`).then(r => r.json());
 
-export const getActiveTerminals = () =>
-  fetch(`${BASE}/api/terminals/active`).then(r => r.json());
+export const getActiveTerminals = (projectPath) =>
+  fetch(`${BASE}/api/terminals/active?projectPath=${encodeURIComponent(projectPath)}`).then(r => r.json());
 
 export const killPort = (port) =>
   fetch(`${BASE}/api/kill-port`, {
