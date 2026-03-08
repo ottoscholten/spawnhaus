@@ -37,8 +37,9 @@ import { Column } from './Column';
 import { TicketPanel } from './TicketPanel';
 import { NewTaskForm } from './NewTaskForm';
 import { Terminal } from './Terminal';
-import { ExtensionsModal, RECOMMENDED_AGENTS } from './ExtensionsModal';
-import { getTasks, updateTask, archiveTask, updateBoardSettings, getPrompts, updatePrompts, getActiveTerminals, getAgents } from '../api';
+import { SettingsPanel } from './SettingsPanel';
+import { RECOMMENDED_AGENTS } from '../recommendations';
+import { getTasks, updateTask, archiveTask, getActiveTerminals, getAgents } from '../api';
 import { on } from '../ws';
 
 const COLUMNS = ['Backlog', 'Scoping', 'In Progress', 'Review', 'Done'];
@@ -62,116 +63,6 @@ function ArchiveDropZone({ isActive }) {
   );
 }
 
-function BoardSettings({ board, project, onSaved, onClose }) {
-  const [nextId, setNextId] = useState(String(board.nextId));
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    const num = parseInt(nextId, 10);
-    if (isNaN(num) || num < 1) return;
-    setSaving(true);
-    await updateBoardSettings(project.path, { nextId: num });
-    onSaved();
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-72 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-white font-semibold mb-4 text-sm">Board Settings</h2>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5">Next task number</label>
-          <input
-            type="number"
-            min="1"
-            value={nextId}
-            onChange={e => setNextId(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 focus:border-blue-600 text-white px-3 py-2 rounded text-sm outline-none font-mono"
-            autoFocus
-          />
-          <p className="text-xs text-gray-600 mt-1.5">Next task will be TASK-{String(nextId).padStart(3, '0')}</p>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-1.5 text-gray-500 hover:text-white text-sm transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PromptsModal({ onClose }) {
-  const [prompts, setPrompts] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    getPrompts().then(setPrompts);
-  }, []);
-
-  const handleSave = async () => {
-    if (!prompts) return;
-    setSaving(true);
-    await updatePrompts(prompts);
-    setSaving(false);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
-          <div>
-            <h2 className="text-white font-semibold text-sm">Agent Prompts</h2>
-            <p className="text-xs text-gray-600 mt-0.5">Global — stored in ~/.spawnhaus/prompts.json</p>
-          </div>
-          <button onClick={onClose} className="text-gray-600 hover:text-white text-xl leading-none">×</button>
-        </div>
-
-        {!prompts ? (
-          <div className="p-5 text-xs text-gray-600">Loading...</div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            <p className="text-xs text-gray-600">
-              Variables: <code className="text-gray-400 bg-gray-800 px-1 rounded">{'{taskId}'}</code>{' '}
-              <code className="text-gray-400 bg-gray-800 px-1 rounded">{'{title}'}</code>{' '}
-              <code className="text-gray-400 bg-gray-800 px-1 rounded">{'{description}'}</code>{' '}
-              <code className="text-gray-400 bg-gray-800 px-1 rounded">{'{branch}'}</code>
-            </p>
-            <div>
-              <label className="block text-xs text-purple-400 font-medium mb-1.5 uppercase tracking-wider">Scoping Prompt</label>
-              <p className="text-xs text-gray-600 mb-1.5">Used when task status is <em>Scoping</em>. Claude should move the task to In Progress when done.</p>
-              <textarea
-                value={prompts.scopingPrompt}
-                onChange={e => setPrompts(p => ({ ...p, scopingPrompt: e.target.value }))}
-                rows={8}
-                className="w-full bg-gray-800 border border-gray-700 focus:border-purple-600 text-gray-300 text-xs px-3 py-2 rounded outline-none resize-y font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-blue-400 font-medium mb-1.5 uppercase tracking-wider">Implementation Prompt</label>
-              <p className="text-xs text-gray-600 mb-1.5">Used when task status is <em>In Progress</em> or later.</p>
-              <textarea
-                value={prompts.implementationPrompt}
-                onChange={e => setPrompts(p => ({ ...p, implementationPrompt: e.target.value }))}
-                rows={8}
-                className="w-full bg-gray-800 border border-gray-700 focus:border-blue-600 text-gray-300 text-xs px-3 py-2 rounded outline-none resize-y font-mono"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-800 shrink-0">
-          <button onClick={onClose} className="px-3 py-1.5 text-gray-500 hover:text-white text-sm transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={saving || !prompts} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition-colors disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function StickyTerminal({ task, terminalId, index, onClose, color }) {
   const [pos, setPos] = useState({ x: 40 + index * 24, y: 60 + index * 24 });
@@ -249,8 +140,6 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showNewTask, setShowNewTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showPrompts, setShowPrompts] = useState(false);
-  const [showExtensions, setShowExtensions] = useState(false);
   const [agentBanner, setAgentBanner] = useState(null); // array of missing agent names
   const [dragging, setDragging] = useState(null);
   const [activeTerminals, setActiveTerminals] = useState({});
@@ -362,8 +251,8 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
         <div className="shrink-0 bg-amber-900/30 border-b border-amber-800/40 px-5 py-2 flex items-center justify-between">
           <span className="text-xs text-amber-400">
             Recommended agent{agentBanner.length > 1 ? 's' : ''} not installed: {agentBanner.join(', ')}.{' '}
-            <button onClick={() => setShowExtensions(true)} className="underline hover:text-amber-300 transition-colors">
-              View in Extensions
+            <button onClick={() => setShowSettings(true)} className="underline hover:text-amber-300 transition-colors">
+              View in Settings
             </button>
           </span>
           <button onClick={() => setAgentBanner(null)} className="text-amber-600 hover:text-amber-300 text-lg leading-none ml-4">×</button>
@@ -371,32 +260,13 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
       )}
       {/* Header */}
       <div className="shrink-0 border-b border-gray-800 px-5 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-white font-semibold text-sm">{project.name}</span>
-          <span className="text-gray-700 text-xs font-mono hidden sm:block truncate max-w-xs">{project.path}</span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-white font-semibold text-sm">Spawnhaus</span>
+          <span className="text-gray-700 text-xs">·</span>
+          <span className="text-gray-400 text-xs font-medium">{project.name}</span>
+          <span className="text-gray-700 text-xs font-mono hidden lg:block truncate max-w-xs">{project.path}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowExtensions(true)}
-            className="px-3 py-1.5 text-gray-600 hover:text-white text-xs transition-colors"
-            title="Skills, agents & plugins"
-          >
-            Extensions
-          </button>
-          <button
-            onClick={() => setShowPrompts(true)}
-            className="px-3 py-1.5 text-gray-600 hover:text-white text-xs transition-colors"
-            title="Agent prompts (global)"
-          >
-            Agent Prompts
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="px-2 py-1.5 text-gray-600 hover:text-white text-base leading-none transition-colors"
-            title="Board settings"
-          >
-            ⚙
-          </button>
           <button
             onClick={() => setShowNewTask(true)}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition-colors"
@@ -404,10 +274,11 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
             + New Task
           </button>
           <button
-            onClick={onChangeProject}
-            className="px-3 py-1.5 text-gray-600 hover:text-white text-xs transition-colors"
+            onClick={() => setShowSettings(s => !s)}
+            className={`px-3 py-1.5 text-xs transition-colors rounded ${showSettings ? 'text-white bg-gray-800' : 'text-gray-600 hover:text-white'}`}
+            title="Settings"
           >
-            Switch Project
+            Settings
           </button>
         </div>
       </div>
@@ -429,6 +300,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
                 tasks={tasksByCol(col)}
                 onTaskClick={(task) => {
                   setSelectedTask(task);
+                  setShowSettings(false);
                 }}
                 onArchive={handleArchive}
                 activeTerminals={activeTerminals}
@@ -464,6 +336,16 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
             </div>
           </>
         )}
+
+        {showSettings && board && (
+          <SettingsPanel
+            project={project}
+            board={board}
+            onClose={() => setShowSettings(false)}
+            onBoardSaved={fetchBoard}
+            onChangeProject={onChangeProject}
+          />
+        )}
       </div>
 
       {showNewTask && (
@@ -472,23 +354,6 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           onClose={() => setShowNewTask(false)}
           onCreated={fetchBoard}
         />
-      )}
-
-      {showSettings && board && (
-        <BoardSettings
-          board={board}
-          project={project}
-          onSaved={fetchBoard}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
-      {showPrompts && (
-        <PromptsModal onClose={() => setShowPrompts(false)} />
-      )}
-
-      {showExtensions && (
-        <ExtensionsModal project={project} onClose={() => setShowExtensions(false)} />
       )}
 
       {stickyTerminals.map(({ task, terminalId }, i) => (
