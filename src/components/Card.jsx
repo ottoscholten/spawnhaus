@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOpenTerminal }) {
+export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOpenTerminal, terminalColor }) {
   const {
     attributes,
     listeners,
@@ -10,6 +10,10 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
     transition,
     isDragging,
   } = useSortable({ id: task.id });
+
+  const borderCls = hasActiveTerminal && terminalColor
+    ? `border-2 ${terminalColor.border}`
+    : 'border border-gray-800 hover:border-gray-700';
 
   return (
     <div
@@ -22,7 +26,7 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className="bg-gray-900 border border-gray-800 hover:border-gray-700 rounded-lg p-3 cursor-pointer select-none transition-colors group"
+      className={`bg-gray-900 ${borderCls} rounded-lg p-3 cursor-pointer select-none transition-colors group`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -36,7 +40,7 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
           {hasActiveTerminal && (
             <button
               onClick={e => { e.stopPropagation(); onOpenTerminal(task); }}
-              className="text-emerald-500 hover:text-emerald-300 text-sm leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-gray-800 transition-colors"
+              className={`${terminalColor?.icon || 'text-emerald-400'} hover:text-white text-sm leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-gray-800 transition-colors`}
               title="Open terminal"
             >
               ⬡

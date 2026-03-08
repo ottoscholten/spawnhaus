@@ -10,6 +10,21 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 
+// Colors chosen to not clash with column header colors (blue=In Progress, purple=Scoping, yellow=Review, green=Done)
+const TERMINAL_COLORS = [
+  { border: 'border-orange-500',  headerBg: 'bg-orange-900/40',  headerText: 'text-orange-300',  headerBorder: 'border-orange-800/60',  icon: 'text-orange-400' },
+  { border: 'border-rose-500',    headerBg: 'bg-rose-900/40',    headerText: 'text-rose-300',    headerBorder: 'border-rose-800/60',    icon: 'text-rose-400' },
+  { border: 'border-fuchsia-500', headerBg: 'bg-fuchsia-900/40', headerText: 'text-fuchsia-300', headerBorder: 'border-fuchsia-800/60', icon: 'text-fuchsia-400' },
+  { border: 'border-teal-500',    headerBg: 'bg-teal-900/40',    headerText: 'text-teal-300',    headerBorder: 'border-teal-800/60',    icon: 'text-teal-400' },
+  { border: 'border-indigo-500',  headerBg: 'bg-indigo-900/40',  headerText: 'text-indigo-300',  headerBorder: 'border-indigo-800/60',  icon: 'text-indigo-400' },
+  { border: 'border-lime-500',    headerBg: 'bg-lime-900/40',    headerText: 'text-lime-300',    headerBorder: 'border-lime-800/60',    icon: 'text-lime-400' },
+];
+
+function taskColor(taskId) {
+  const num = parseInt(taskId.replace(/\D/g, ''), 10) || 0;
+  return TERMINAL_COLORS[num % TERMINAL_COLORS.length];
+}
+
 const collisionDetection = (args) => {
   const archiveHit = pointerWithin({
     ...args,
@@ -158,7 +173,7 @@ function PromptsModal({ onClose }) {
   );
 }
 
-function StickyTerminal({ task, terminalId, index, onClose }) {
+function StickyTerminal({ task, terminalId, index, onClose, color }) {
   const [pos, setPos] = useState({ x: 40 + index * 24, y: 60 + index * 24 });
   const [size, setSize] = useState({ w: 580, h: 320 });
   const dragging = useRef(false);
@@ -203,7 +218,7 @@ function StickyTerminal({ task, terminalId, index, onClose }) {
     >
       <div
         onMouseDown={onMouseDown}
-        className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-gray-800 bg-gray-900 cursor-grab active:cursor-grabbing select-none"
+        className={`shrink-0 flex items-center justify-between px-3 py-2 border-b cursor-grab active:cursor-grabbing select-none ${color ? `${color.headerBg} ${color.headerText} ${color.headerBorder}` : 'border-gray-800 bg-gray-900'}`}
       >
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-600 font-mono">{task.id}</span>
@@ -243,7 +258,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
 
   const fetchBoard = useCallback(async () => {
     try {
-      const [data, active] = await Promise.all([getTasks(project.path), getActiveTerminals()]);
+      const [data, active] = await Promise.all([getTasks(project.path), getActiveTerminals(project.path)]);
       setBoard(data);
       setActiveTerminals(active);
     } catch {}
@@ -333,6 +348,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   }
 
   const tasksByCol = (col) => board.tasks.filter(t => t.status === col);
+  const terminalColorMap = Object.fromEntries(Object.keys(activeTerminals).map(id => [id, taskColor(id)]));
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col overflow-hidden">
@@ -413,11 +429,11 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
                 tasks={tasksByCol(col)}
                 onTaskClick={(task) => {
                   setSelectedTask(task);
-                  setStickyTerminals(prev => prev.filter(s => s.task.id !== task.id));
                 }}
                 onArchive={handleArchive}
                 activeTerminals={activeTerminals}
                 onOpenTerminal={handleOpenTerminal}
+                terminalColorMap={terminalColorMap}
               />
             ))}
             <ArchiveDropZone isActive={dragging?.status === 'Done'} />
@@ -442,6 +458,8 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
                 onClose={() => setSelectedTask(null)}
                 onUpdate={fetchBoard}
                 activeTerminals={activeTerminals}
+                terminalColor={activeTerminals[selectedTask.id] ? taskColor(selectedTask.id) : null}
+                hasStickyTerminal={stickyTerminals.some(s => s.task.id === selectedTask.id)}
               />
             </div>
           </>
@@ -480,6 +498,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           terminalId={terminalId}
           index={i}
           onClose={() => setStickyTerminals(prev => prev.filter(s => s.task.id !== task.id))}
+          color={taskColor(task.id)}
         />
       ))}
     </div>

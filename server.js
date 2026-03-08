@@ -121,7 +121,7 @@ const watchProject = (projectPath) => {
       for (const task of board.tasks) {
         const prev = cache.get(task.id);
         if (prev === 'Scoping' && task.status === 'In Progress') {
-          const terminalId = taskTerminals.get(task.id);
+          const terminalId = taskTerminals.get(`${projectPath}:${task.id}`);
           if (terminalId && terminals.has(terminalId)) {
             const prompts = getPromptsData();
             const message = applyTemplate(prompts.implementationPrompt, task);
@@ -418,7 +418,7 @@ app.post('/api/terminal/create', (req, res) => {
 
   if (!proc) return res.status(500).json({ error: 'Could not spawn terminal — no usable shell found' });
 
-  const termEntry = { pty: proc, clients: new Set(), pendingMessage: req.body.message || null, idleTimer: null, watchingIdle: false, outputBuffer: '' };
+  const termEntry = { pty: proc, clients: new Set(), pendingMessage: req.body.message || null, idleTimer: null, watchingIdle: false, outputBuffer: '', cwd: safeCwd, taskId: req.body.taskId || null, projectPath: req.body.projectPath || null };
   terminals.set(id, termEntry);
 
   proc.onData(data => {
@@ -458,18 +458,32 @@ app.post('/api/terminal/create', (req, res) => {
     }
   });
 
-  if (req.body.taskId) taskTerminals.set(req.body.taskId, id);
+  const taskKey = req.body.taskId && req.body.projectPath ? `${req.body.projectPath}:${req.body.taskId}` : null;
+  if (taskKey) taskTerminals.set(taskKey, id);
   proc.onExit(() => {
     const term = terminals.get(id);
     if (term) {
+      // Fallback: if Claude exited without showing the resume message, grab session ID from filesystem
+      if (!term.sessionCaptured && term.taskId && !term.taskId.endsWith(':dev') && term.projectPath) {
+        try {
+          const sessionId = findClaudeSessionId(term.cwd);
+          if (sessionId) {
+            const board = readBoard(term.projectPath);
+            const idx = board.tasks.findIndex(t => t.id === term.taskId);
+            if (idx !== -1 && board.tasks[idx].claudeSessionId !== sessionId) {
+              board.tasks[idx].claudeSessionId = sessionId;
+              writeBoard(term.projectPath, board);
+            }
+          }
+        } catch {}
+      }
       const exitMsg = JSON.stringify({ type: 'terminal-exit', terminalId: id });
       term.clients.forEach(ws => ws.readyState === 1 && ws.send(exitMsg));
     }
     terminals.delete(id);
-    const taskId = req.body.taskId;
-    if (taskId && taskTerminals.get(taskId) === id) {
-      taskTerminals.delete(taskId);
-      if (!taskId.endsWith(':dev')) broadcast({ type: 'board-update' });
+    if (taskKey && taskTerminals.get(taskKey) === id) {
+      taskTerminals.delete(taskKey);
+      if (!req.body.taskId.endsWith(':dev')) broadcast({ type: 'board-update' });
     }
   });
   if (command) setTimeout(() => proc.write(command + '\r'), 800);
@@ -494,9 +508,10 @@ app.delete('/api/terminal/:id', (req, res) => {
 });
 
 app.get('/api/terminal/task/:taskId', (req, res) => {
-  const terminalId = taskTerminals.get(req.params.taskId);
+  const key = req.query.projectPath ? `${req.query.projectPath}:${req.params.taskId}` : req.params.taskId;
+  const terminalId = taskTerminals.get(key);
   if (!terminalId || !terminals.has(terminalId)) {
-    taskTerminals.delete(req.params.taskId);
+    taskTerminals.delete(key);
     return res.json({ terminalId: null });
   }
   res.json({ terminalId });
@@ -589,10 +604,15 @@ app.post('/api/kill-port', (req, res) => {
 });
 
 app.get('/api/terminals/active', (req, res) => {
+  const projectPath = req.query.projectPath;
+  const prefix = projectPath ? `${projectPath}:` : null;
   const active = {};
-  taskTerminals.forEach((terminalId, taskId) => {
-    if (terminals.has(terminalId)) active[taskId] = terminalId;
-    else taskTerminals.delete(taskId);
+  taskTerminals.forEach((terminalId, key) => {
+    if (!terminals.has(terminalId)) { taskTerminals.delete(key); return; }
+    if (!prefix || key.startsWith(prefix)) {
+      const taskId = prefix ? key.slice(prefix.length) : key;
+      active[taskId] = terminalId;
+    }
   });
   res.json(active);
 });
@@ -618,4 +638,30 @@ wss.on('connection', (ws) => {
   });
 });
 
+// On shutdown, save Claude session IDs for any terminals that are still running
+const saveAllSessionsAndExit = () => {
+  terminals.forEach((term) => {
+    if (!term.taskId || term.taskId.endsWith(':dev') || !term.projectPath || term.sessionCaptured) return;
+    try {
+      const sessionId = findClaudeSessionId(term.cwd);
+      if (sessionId) {
+        const board = readBoard(term.projectPath);
+        const idx = board.tasks.findIndex(t => t.id === term.taskId);
+        if (idx !== -1) { board.tasks[idx].claudeSessionId = sessionId; writeBoard(term.projectPath, board); }
+      }
+    } catch {}
+  });
+  process.exit(0);
+};
+process.on('SIGTERM', saveAllSessionsAndExit);
+process.on('SIGINT', saveAllSessionsAndExit);
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error('Port 3001 is already in use — another Spawnhaus server is running. Stop it first or run: lsof -ti :3001 | xargs kill -9');
+    process.exit(1);
+  } else {
+    throw err;
+  }
+});
 server.listen(3001, () => console.log('Spawnhaus server on :3001'));
