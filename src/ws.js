@@ -2,7 +2,8 @@ let socket = null;
 const handlers = new Map();
 
 function connect() {
-  socket = new WebSocket('ws://localhost:3001');
+  const wsHost = window.location.host;
+  socket = new WebSocket(`ws://${wsHost}/ws`);
   socket.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);

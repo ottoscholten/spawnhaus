@@ -21,6 +21,7 @@ app.use((req, res, next) => {
   next();
 });
 
+const PORT = parseInt(process.env.PORT || '3001');
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 const terminals = new Map();
@@ -657,9 +658,9 @@ process.on('SIGTERM', saveAllSessionsAndExit);
 process.on('SIGINT', saveAllSessionsAndExit);
 
 const onPortInUse = () => {
-  console.error('Port 3001 already in use — another Spawnhaus server is running, backend not started.');
+  console.error(`Port ${PORT} already in use — another Spawnhaus server is running, backend not started.`);
   process.exit(0);
 };
 server.on('error', (err) => err.code === 'EADDRINUSE' ? onPortInUse() : (() => { throw err; })());
 wss.on('error', (err) => err.code === 'EADDRINUSE' ? onPortInUse() : (() => { throw err; })());
-server.listen(3001, () => console.log('Spawnhaus server on :3001'));
+server.listen(PORT, () => console.log(`Spawnhaus server on :${PORT}`));
