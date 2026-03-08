@@ -7,6 +7,7 @@ import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
 import { createRequire } from 'module';
+import { randomUUID } from 'crypto';
 
 const require = createRequire(import.meta.url);
 const pty = require('node-pty-prebuilt-multiarch');
@@ -180,6 +181,11 @@ Task data lives in \`.kanban/board.json\`, rendered as markdown in the Spawnhaus
 5. Set status to \`In Progress\` when coding begins — this claims the task
 6. When done: append \`## What was built\` to the description, then set status to \`Done\` and open a PR
 
+## Worktree context
+When working in a git worktree, a \`TASK_CONTEXT.md\` file will be present in the worktree root.
+**Read it first** — it contains the task ID, title, current status, and full description.
+This file is gitignored and kept in sync automatically by Spawnhaus. Do not commit it.
+
 ## Agent rules
 - Only pick up tasks in \`Scoping\` state — never tasks already \`In Progress\` or beyond
 - Never modify another task's fields
@@ -231,6 +237,13 @@ app.post('/api/projects', (req, res) => {
   if (!existing.includes('.kanban/WORKFLOW.md')) {
     fs.writeFileSync(claudeMdPath, existing + claudeRef);
     claudeMdUpdated = true;
+  }
+
+  // Add TASK_CONTEXT.md to .gitignore if not already present
+  const gitignorePath = path.join(p, '.gitignore');
+  const gitignoreContent = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
+  if (!gitignoreContent.includes('TASK_CONTEXT.md')) {
+    fs.writeFileSync(gitignorePath, gitignoreContent + '\n# Spawnhaus worktree task context (local only)\nTASK_CONTEXT.md\n');
   }
 
   watchProject(p);
@@ -300,7 +313,15 @@ app.patch('/api/tasks/:id', (req, res) => {
     board.tasks[idx] = { ...task, ...updates };
   }
   writeBoard(projectPath, board);
-  res.json(board.tasks[idx]);
+  // Keep TASK_CONTEXT.md in sync if worktree exists
+  const updatedTask = board.tasks[idx];
+  if (updatedTask.worktreePath) {
+    const wtPath = path.isAbsolute(updatedTask.worktreePath)
+      ? updatedTask.worktreePath
+      : path.join(projectPath, updatedTask.worktreePath);
+    if (fs.existsSync(wtPath)) writeTaskContext(wtPath, projectPath, updatedTask);
+  }
+  res.json(updatedTask);
 });
 
 app.delete('/api/tasks/:id', (req, res) => {
@@ -374,6 +395,29 @@ const symlinkEnv = (projectPath, wtPath) => {
   }
 };
 
+const writeTaskContext = (wtPath, projectPath, task) => {
+  try {
+    const lines = [
+      `# Task Context`,
+      ``,
+      `**ID:** ${task.id}`,
+      `**Title:** ${task.title}`,
+      `**Status:** ${task.status}`,
+      `**Branch:** ${task.branch || task.id.toLowerCase()}`,
+      `**Worktree:** ${wtPath}`,
+      `**Project:** ${projectPath}`,
+      ``,
+      `## Description`,
+      ``,
+      task.description || '*(no description yet)*',
+      ``,
+      `---`,
+      `*This file is gitignored and local to this worktree. Do not commit it.*`,
+    ];
+    fs.writeFileSync(path.join(wtPath, 'TASK_CONTEXT.md'), lines.join('\n'));
+  } catch {}
+};
+
 // Worktree
 app.post('/api/worktree/create', (req, res) => {
   const { projectPath, taskId } = req.body;
@@ -384,12 +428,22 @@ app.post('/api/worktree/create', (req, res) => {
       execSync(`git -C "${projectPath}" worktree add -b "${branch}" "${wtPath}"`, { stdio: 'pipe' });
     symlinkEnv(projectPath, wtPath);
     const relPath = path.relative(projectPath, wtPath);
+    try {
+      const board = readBoard(projectPath);
+      const task = board.tasks.find(t => t.id === taskId);
+      if (task) writeTaskContext(wtPath, projectPath, task);
+    } catch {}
     res.json({ worktreePath: relPath, branch });
   } catch {
     try {
       execSync(`git -C "${projectPath}" worktree add "${wtPath}" "${branch}"`, { stdio: 'pipe' });
       symlinkEnv(projectPath, wtPath);
       const relPath = path.relative(projectPath, wtPath);
+      try {
+        const board = readBoard(projectPath);
+        const task = board.tasks.find(t => t.id === taskId);
+        if (task) writeTaskContext(wtPath, projectPath, task);
+      } catch {}
       res.json({ worktreePath: relPath, branch });
     } catch (e2) {
       const relPath = path.relative(projectPath, wtPath);
@@ -516,6 +570,22 @@ app.get('/api/terminal/task/:taskId', (req, res) => {
     return res.json({ terminalId: null });
   }
   res.json({ terminalId });
+});
+
+app.post('/api/upload-temp', (req, res) => {
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => {
+    try {
+      const buf = Buffer.concat(chunks);
+      const ext = (req.headers['x-filename'] || 'file').split('.').pop() || 'bin';
+      const filePath = path.join(os.tmpdir(), `spawnhaus-${randomUUID()}.${ext}`);
+      fs.writeFileSync(filePath, buf);
+      res.json({ path: filePath });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 });
 
 app.post('/api/kill-port', (req, res) => {
