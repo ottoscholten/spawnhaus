@@ -83,7 +83,7 @@ function EditableField({ value, onChange, onSave, placeholder, label }) {
   );
 }
 
-export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals }) {
+export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals, terminalColor, hasStickyTerminal }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
   const [claudeTermIdState, setClaudeTermId] = useState(null);
@@ -106,10 +106,10 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals 
     setDevTermId(null);
     setShowIframe(false);
     setLaunchError('');
-    getTaskTerminal(task.id).then(({ terminalId }) => {
+    getTaskTerminal(task.id, project.path).then(({ terminalId }) => {
       if (terminalId) setClaudeTermId(terminalId);
     });
-    getTaskTerminal(task.id + ':dev').then(({ terminalId }) => {
+    getTaskTerminal(task.id + ':dev', project.path).then(({ terminalId }) => {
       if (terminalId) setDevTermId(terminalId);
     });
   }, [task.id]);
@@ -176,7 +176,8 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals 
         port = res.devPort;
         setDevPort(port);
       }
-      const t = await createTerminal(cwd, `lsof -ti :${port} | xargs kill -9 2>/dev/null; rm -f .next/dev/lock && npm run dev -- --port ${port}`, null, task.id + ':dev');
+      const backendPort = port + 1000;
+      const t = await createTerminal(cwd, `lsof -ti :${port} | xargs kill -9 2>/dev/null; rm -f .next/dev/lock && VITE_PORT=${port} PORT=${backendPort} npm run dev`, null, task.id + ':dev', project.path);
       setDevTermId(t.terminalId);
       onUpdate();
     } catch (e) {
@@ -356,9 +357,12 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals 
               )}
             </div>
             {launchError && <p className="text-red-400 text-xs">{launchError}</p>}
-            {claudeTermId && (
-              <div className="border border-gray-800 rounded-lg overflow-hidden flex flex-col" style={{ height: termHeight }}>
-                <div className="text-xs text-gray-600 px-2 py-1 border-b border-gray-800 bg-gray-900/80 font-mono shrink-0 flex items-center justify-between">
+            {claudeTermId && hasStickyTerminal && (
+              <p className="text-xs text-gray-600 italic">Terminal open in floating window</p>
+            )}
+            {claudeTermId && !hasStickyTerminal && (
+              <div className={`border rounded-lg overflow-hidden flex flex-col ${terminalColor ? terminalColor.border : 'border-gray-800'}`} style={{ height: termHeight }}>
+                <div className={`text-xs px-2 py-1 border-b font-mono shrink-0 flex items-center justify-between ${terminalColor ? `${terminalColor.headerBg} ${terminalColor.headerText} ${terminalColor.headerBorder}` : 'text-gray-600 border-gray-800 bg-gray-900/80'}`}>
                   <span>claude — {task.worktreePath || project.path}</span>
                   <button
                     onClick={() => send({ type: 'terminal-input', terminalId: claudeTermId, data: '/exit\r' })}
@@ -373,7 +377,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals 
                 </div>
               </div>
             )}
-            {claudeTermId && (
+            {claudeTermId && !hasStickyTerminal && (
               <div
                 className="h-1.5 rounded cursor-row-resize bg-gray-800 hover:bg-blue-600 transition-colors"
                 onMouseDown={handleResizeMouseDown}
