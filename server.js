@@ -576,12 +576,10 @@ const saveAllSessionsAndExit = () => {
 process.on('SIGTERM', saveAllSessionsAndExit);
 process.on('SIGINT', saveAllSessionsAndExit);
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error('Port 3001 is already in use — another Spawnhaus server is running. Stop it first or run: lsof -ti :3001 | xargs kill -9');
-    process.exit(1);
-  } else {
-    throw err;
-  }
-});
+const onPortInUse = () => {
+  console.error('Port 3001 already in use — another Spawnhaus server is running, backend not started.');
+  process.exit(0);
+};
+server.on('error', (err) => err.code === 'EADDRINUSE' ? onPortInUse() : (() => { throw err; })());
+wss.on('error', (err) => err.code === 'EADDRINUSE' ? onPortInUse() : (() => { throw err; })());
 server.listen(3001, () => console.log('Spawnhaus server on :3001'));
