@@ -1,0 +1,6 @@
+node_modules/
+dist/
+
+# Spawnhaus project data (machine-specific)
+.kanban/board.json
+.kanban/archive/
