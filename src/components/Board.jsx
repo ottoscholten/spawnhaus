@@ -22,7 +22,8 @@ import { Column } from './Column';
 import { TicketPanel } from './TicketPanel';
 import { NewTaskForm } from './NewTaskForm';
 import { Terminal } from './Terminal';
-import { getTasks, updateTask, archiveTask, updateBoardSettings, getPrompts, updatePrompts, getActiveTerminals } from '../api';
+import { ExtensionsModal, RECOMMENDED_AGENTS } from './ExtensionsModal';
+import { getTasks, updateTask, archiveTask, updateBoardSettings, getPrompts, updatePrompts, getActiveTerminals, getAgents } from '../api';
 import { on } from '../ws';
 
 const COLUMNS = ['Backlog', 'Scoping', 'In Progress', 'Review', 'Done'];
@@ -234,6 +235,8 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPrompts, setShowPrompts] = useState(false);
+  const [showExtensions, setShowExtensions] = useState(false);
+  const [agentBanner, setAgentBanner] = useState(null); // array of missing agent names
   const [dragging, setDragging] = useState(null);
   const [activeTerminals, setActiveTerminals] = useState({});
   const [stickyTerminals, setStickyTerminals] = useState([]);
@@ -247,6 +250,16 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   }, [project.path]);
 
   useEffect(() => { fetchBoard(); }, [fetchBoard]);
+
+  // Check for missing recommended agents on project open
+  useEffect(() => {
+    if (RECOMMENDED_AGENTS.length === 0) return;
+    getAgents(project.path).then(agents => {
+      const installedNames = new Set(agents.map(a => a.name || a.id));
+      const missing = RECOMMENDED_AGENTS.filter(r => !installedNames.has(r.name)).map(r => r.name);
+      if (missing.length > 0) setAgentBanner(missing);
+    }).catch(() => {});
+  }, [project.path]);
 
   useEffect(() => {
     if (!board || !selectedTask) return;
@@ -329,6 +342,17 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           <button onClick={onDismissNotice} className="text-emerald-600 hover:text-emerald-300 text-lg leading-none ml-4">×</button>
         </div>
       )}
+      {agentBanner && (
+        <div className="shrink-0 bg-amber-900/30 border-b border-amber-800/40 px-5 py-2 flex items-center justify-between">
+          <span className="text-xs text-amber-400">
+            Recommended agent{agentBanner.length > 1 ? 's' : ''} not installed: {agentBanner.join(', ')}.{' '}
+            <button onClick={() => setShowExtensions(true)} className="underline hover:text-amber-300 transition-colors">
+              View in Extensions
+            </button>
+          </span>
+          <button onClick={() => setAgentBanner(null)} className="text-amber-600 hover:text-amber-300 text-lg leading-none ml-4">×</button>
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 border-b border-gray-800 px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -336,6 +360,13 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           <span className="text-gray-700 text-xs font-mono hidden sm:block truncate max-w-xs">{project.path}</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowExtensions(true)}
+            className="px-3 py-1.5 text-gray-600 hover:text-white text-xs transition-colors"
+            title="Skills, agents & plugins"
+          >
+            Extensions
+          </button>
           <button
             onClick={() => setShowPrompts(true)}
             className="px-3 py-1.5 text-gray-600 hover:text-white text-xs transition-colors"
@@ -436,6 +467,10 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
 
       {showPrompts && (
         <PromptsModal onClose={() => setShowPrompts(false)} />
+      )}
+
+      {showExtensions && (
+        <ExtensionsModal project={project} onClose={() => setShowExtensions(false)} />
       )}
 
       {stickyTerminals.map(({ task, terminalId }, i) => (

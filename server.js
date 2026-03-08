@@ -502,6 +502,86 @@ app.get('/api/terminal/task/:taskId', (req, res) => {
   res.json({ terminalId });
 });
 
+// Skills
+app.get('/api/skills', (req, res) => {
+  const { projectPath } = req.query;
+  if (!projectPath) return res.json({ skills: [], commands: [] });
+
+  const parseFrontmatter = (content, fallbackName) => {
+    let name = fallbackName, description = '';
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+    if (fmMatch) {
+      const fm = fmMatch[1];
+      const nm = fm.match(/^name:\s*(.+)$/m);
+      const dm = fm.match(/^description:\s*(.+)$/m);
+      if (nm) name = nm[1].trim();
+      if (dm) description = dm[1].trim();
+    }
+    return { name, description };
+  };
+
+  const skills = [];
+  const skillsDir = path.join(projectPath, '.claude', 'skills');
+  if (fs.existsSync(skillsDir)) {
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const mdPath = path.join(skillsDir, entry.name, 'SKILL.md');
+      if (!fs.existsSync(mdPath)) continue;
+      const content = fs.readFileSync(mdPath, 'utf8');
+      const { name, description } = parseFrontmatter(content, entry.name);
+      skills.push({ id: entry.name, name, description, content, type: 'skill' });
+    }
+  }
+
+  const commands = [];
+  const commandsDir = path.join(projectPath, '.claude', 'commands');
+  if (fs.existsSync(commandsDir)) {
+    for (const entry of fs.readdirSync(commandsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const content = fs.readFileSync(path.join(commandsDir, entry.name), 'utf8');
+      const id = entry.name.replace(/\.md$/, '');
+      const { name, description } = parseFrontmatter(content, id);
+      commands.push({ id, name, description, content, type: 'command' });
+    }
+  }
+
+  res.json({ skills, commands });
+});
+
+// Agents
+app.get('/api/agents', (req, res) => {
+  const { projectPath } = req.query;
+  const pluginsFile = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
+  if (!fs.existsSync(pluginsFile)) return res.json([]);
+  try {
+    const data = JSON.parse(fs.readFileSync(pluginsFile, 'utf8'));
+    const all = Array.isArray(data) ? data : Object.values(data);
+    const agents = projectPath ? all.filter(a => a.projectPath === projectPath) : all;
+    res.json(agents);
+  } catch { res.json([]); }
+});
+
+// Plugins (MCPs)
+app.get('/api/plugins', (req, res) => {
+  const settingsFile = path.join(os.homedir(), '.claude', 'settings.json');
+  if (!fs.existsSync(settingsFile)) return res.json({});
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    res.json(settings.mcpServers || {});
+  } catch { res.json({}); }
+});
+
+app.delete('/api/plugins/:name', (req, res) => {
+  const settingsFile = path.join(os.homedir(), '.claude', 'settings.json');
+  if (!fs.existsSync(settingsFile)) return res.json({ ok: true });
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    if (settings.mcpServers) delete settings.mcpServers[req.params.name];
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/kill-port', (req, res) => {
   const { port } = req.body;
   try { execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: 'pipe' }); } catch {}
