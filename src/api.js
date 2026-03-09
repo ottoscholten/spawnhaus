@@ -106,6 +106,18 @@ export const updatePrompts = (prompts) =>
     body: JSON.stringify(prompts),
   }).then(r => r.json());
 
+export const getSkills = (projectPath) =>
+  fetch(`${BASE}/api/skills?projectPath=${encodeURIComponent(projectPath)}`).then(r => r.json());
+
+export const getAgents = (projectPath) =>
+  fetch(`${BASE}/api/agents?projectPath=${encodeURIComponent(projectPath)}`).then(r => r.json());
+
+export const getPlugins = () =>
+  fetch(`${BASE}/api/plugins`).then(r => r.json());
+
+export const deletePlugin = (name) =>
+  fetch(`${BASE}/api/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json());
+
 export const updateBoardSettings = (projectPath, settings) =>
   fetch(`${BASE}/api/board`, {
     method: 'PATCH',
