@@ -1,7 +1,7 @@
-# VibeOps — Task Management Workflow
+# Spawnhaus — Task Management Workflow
 
 This file defines the task lifecycle and agent rules for this project.
-Task data lives in `.kanban/board.json`, rendered as markdown in the VibeOps UI.
+Task data lives in `.kanban/board.json`, rendered as markdown in the Spawnhaus UI.
 
 ## Status lifecycle
 `Backlog` → `Scoping` → `In Progress` → `Review` → `Done`
@@ -33,7 +33,7 @@ Task data lives in `.kanban/board.json`, rendered as markdown in the VibeOps UI.
 - Before setting status to `Done`, append `## What was built` to the description
 
 ## Writing conventions
-All fields are rendered as **markdown** in the VibeOps UI.
+All fields are rendered as **markdown** in the Spawnhaus UI.
 
 ### `title`
 One short sentence. No punctuation at the end. No markdown.

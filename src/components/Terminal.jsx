@@ -5,6 +5,15 @@ export function Terminal({ terminalId, fontSize = 12 }) {
   const containerRef = useRef(null);
   const xtermRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
+
+  useEffect(() => {
+    const reset = () => { dragCounter.current = 0; setDragOver(false); };
+    document.addEventListener('dragend', reset);
+    document.addEventListener('drop', reset);
+    return () => { document.removeEventListener('dragend', reset); document.removeEventListener('drop', reset); };
+  }, []);
 
   useEffect(() => {
     if (!terminalId || !containerRef.current) return;
@@ -44,16 +53,32 @@ export function Terminal({ terminalId, fontSize = 12 }) {
       }, 50);
 
       send({ type: 'attach-terminal', terminalId });
-      setTimeout(() => term.scrollToBottom(), 100);
+
+      const isAtBottom = { current: true };
+      let replayDone = false;
+
+      term.onScroll(() => {
+        if (!replayDone) return;
+        const { viewportY, baseY } = term.buffer.active;
+        isAtBottom.current = viewportY >= baseY;
+      });
 
       const unsub = on('terminal-output', (msg) => {
         if (msg.terminalId === terminalId) {
           term.write(msg.data);
-          term.scrollToBottom();
+          if (!replayDone) {
+            term.scrollToBottom();
+            replayDone = true;
+          } else if (isAtBottom.current) {
+            term.scrollToBottom();
+          }
         }
       });
 
-      term.onData(data => send({ type: 'terminal-input', terminalId, data }));
+      term.onData(data => {
+        isAtBottom.current = true;
+        send({ type: 'terminal-input', terminalId, data });
+      });
       term.onResize(({ cols, rows }) => send({ type: 'terminal-resize', terminalId, cols, rows }));
 
       const ro = new ResizeObserver(() => {
@@ -81,11 +106,42 @@ export function Terminal({ terminalId, fontSize = 12 }) {
     };
   }, [terminalId]);
 
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      try {
+        const buf = await file.arrayBuffer();
+        const res = await fetch('/api/upload-temp', {
+          method: 'POST',
+          headers: { 'x-filename': file.name, 'content-type': 'application/octet-stream' },
+          body: buf,
+        });
+        const { path: filePath } = await res.json();
+        send({ type: 'terminal-input', terminalId, data: filePath });
+      } catch {}
+    }
+  };
+
   return (
-    <div style={{ height: '100%', width: '100%', background: '#0d1117', position: 'relative' }}>
+    <div
+      style={{ height: '100%', width: '100%', background: '#0d1117', position: 'relative' }}
+      onDragOver={e => e.preventDefault()}
+      onDragEnter={() => { dragCounter.current++; setDragOver(true); }}
+      onDragLeave={() => { dragCounter.current--; if (dragCounter.current === 0) setDragOver(false); }}
+      onDrop={handleDrop}
+    >
       {loading && (
         <div style={{ position: 'absolute', top: 8, left: 8, color: '#484f58', fontSize: 11, fontFamily: 'monospace', pointerEvents: 'none' }}>
           connecting...
+        </div>
+      )}
+      {dragOver && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(59,130,246,0.15)', border: '2px dashed #3b82f6', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 10 }}>
+          <span style={{ fontSize: 28, color: '#3b82f6' }}>↑</span>
         </div>
       )}
       <div ref={containerRef} style={{ height: '100%', width: '100%' }} />

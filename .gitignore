@@ -4,3 +4,6 @@ dist/
 # Spawnhaus project data (machine-specific)
 .kanban/board.json
 .kanban/archive/
+
+# Worktree task context (local only, regenerated automatically)
+TASK_CONTEXT.md

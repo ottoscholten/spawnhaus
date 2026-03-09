@@ -3,6 +3,9 @@ import { ProjectPicker } from './components/ProjectPicker';
 import { Board } from './components/Board';
 import { setActiveProject } from './api';
 
+const taskId = import.meta.env.VITE_TASK_ID;
+if (taskId) document.title = `${taskId} — Spawnhaus`;
+
 export default function App() {
   const [project, setProject] = useState(() => {
     try {

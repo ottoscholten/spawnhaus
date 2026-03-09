@@ -10,7 +10,7 @@ const HEADER_STYLE = {
   'Done': 'text-green-400',
 };
 
-export function Column({ id, title, tasks, onTaskClick, onArchive, activeTerminals, onOpenTerminal }) {
+export function Column({ id, title, tasks, onTaskClick, onArchive, activeTerminals, onOpenTerminal, terminalColorMap }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
@@ -40,6 +40,7 @@ export function Column({ id, title, tasks, onTaskClick, onArchive, activeTermina
                 onArchive={onArchive}
                 hasActiveTerminal={!!activeTerminals?.[task.id]}
                 onOpenTerminal={onOpenTerminal}
+                terminalColor={activeTerminals?.[task.id] ? terminalColorMap?.[task.id] : null}
               />
             ))}
           </div>

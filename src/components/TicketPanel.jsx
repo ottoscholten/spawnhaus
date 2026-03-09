@@ -177,7 +177,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
         setDevPort(port);
       }
       const backendPort = port + 1000;
-      const t = await createTerminal(cwd, `lsof -ti :${port} | xargs kill -9 2>/dev/null; rm -f .next/dev/lock && VITE_PORT=${port} PORT=${backendPort} npm run dev`, null, task.id + ':dev', project.path);
+      const t = await createTerminal(cwd, `lsof -ti :${port} | xargs kill -9 2>/dev/null; rm -f .next/dev/lock && VITE_PORT=${port} PORT=${backendPort} VITE_TASK_ID=${task.id} npm run dev`, null, task.id + ':dev', project.path);
       setDevTermId(t.terminalId);
       onUpdate();
     } catch (e) {
@@ -189,8 +189,11 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
 
   const handleStopDev = async () => {
     if (!devTermId) return;
+    send({ type: 'terminal-input', terminalId: devTermId, data: '\x03' });
+    await new Promise(r => setTimeout(r, 300));
     await killTerminal(devTermId);
     setDevTermId(null);
+    onUpdate();
   };
 
   const handleResizeMouseDown = (e) => {
@@ -365,7 +368,13 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
                 <div className={`text-xs px-2 py-1 border-b font-mono shrink-0 flex items-center justify-between ${terminalColor ? `${terminalColor.headerBg} ${terminalColor.headerText} ${terminalColor.headerBorder}` : 'text-gray-600 border-gray-800 bg-gray-900/80'}`}>
                   <span>claude — {task.worktreePath || project.path}</span>
                   <button
-                    onClick={() => send({ type: 'terminal-input', terminalId: claudeTermId, data: '/exit\r' })}
+                    onClick={async () => {
+                      send({ type: 'terminal-input', terminalId: claudeTermId, data: '/exit\r' });
+                      await new Promise(r => setTimeout(r, 2000));
+                      await killTerminal(claudeTermId);
+                      setClaudeTermId(null);
+                      onUpdate();
+                    }}
                     className="text-gray-600 hover:text-red-400 transition-colors ml-2"
                     title="End session"
                   >
