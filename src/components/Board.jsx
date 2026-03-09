@@ -231,7 +231,11 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   if (!board) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-700 text-sm">Loading...</div>
+        <div className="flex gap-1.5">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-700 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -240,7 +244,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   const terminalColorMap = Object.fromEntries(Object.keys(activeTerminals).map(id => [id, taskColor(id)]));
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
       {notice && (
         <div className="shrink-0 bg-emerald-900/40 border-b border-emerald-800/50 px-5 py-2 flex items-center justify-between">
           <span className="text-xs text-emerald-400">{notice}</span>
@@ -275,10 +279,13 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           </button>
           <button
             onClick={() => setShowSettings(s => !s)}
-            className={`px-3 py-1.5 text-xs transition-colors rounded ${showSettings ? 'text-white bg-gray-800' : 'text-gray-600 hover:text-white'}`}
+            className={`w-8 h-8 flex items-center justify-center rounded transition-colors ${showSettings ? 'text-white bg-gray-800' : 'text-gray-600 hover:text-white hover:bg-gray-800/60'}`}
             title="Settings"
           >
-            Settings
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7.5 9.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M7.5 1v1.5M7.5 12.5V14M1 7.5h1.5M12.5 7.5H14M2.697 2.697l1.06 1.06M11.243 11.243l1.06 1.06M2.697 12.303l1.06-1.06M11.243 3.757l1.06-1.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -291,7 +298,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 p-5 overflow-x-auto flex-1">
+          <div className={`flex gap-4 p-5 flex-1 ${selectedTask ? 'overflow-hidden' : 'overflow-x-auto'}`}>
             {COLUMNS.map(col => (
               <Column
                 key={col}

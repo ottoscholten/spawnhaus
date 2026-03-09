@@ -91,6 +91,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
   const claudeTermId = claudeTermIdState || activeTerminals?.[task.id] || null;
   const devTermId = devTermIdState || activeTerminals?.[task.id + ':dev'] || null;
   const [devPort, setDevPort] = useState(task.devPort);
+  const [devUrl, setDevUrl] = useState(null);
   const [showIframe, setShowIframe] = useState(false);
   const [termHeight, setTermHeight] = useState(420);
   const [launching, setLaunching] = useState(false);
@@ -102,6 +103,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
     setTitle(task.title);
     setDescription(task.description || '');
     setDevPort(task.devPort);
+    setDevUrl(null);
     setClaudeTermId(null);
     setDevTermId(null);
     setShowIframe(false);
@@ -116,8 +118,19 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
 
   useEffect(() => on('terminal-exit', (msg) => {
     if (msg.terminalId === claudeTermIdState) { setClaudeTermId(null); onUpdate(); }
-    if (msg.terminalId === devTermIdState) setDevTermId(null);
+    if (msg.terminalId === devTermIdState) { setDevTermId(null); setDevUrl(null); }
   }));
+
+  // Parse the actual dev server URL from terminal output (Vite/Next.js both print it).
+  // Uses the LAST match so buffer replays with old history don't surface stale URLs.
+  useEffect(() => {
+    if (!devTermId) { setDevUrl(null); return; }
+    return on('terminal-output', (msg) => {
+      if (msg.terminalId !== devTermId) return;
+      const matches = [...msg.data.matchAll(/https?:\/\/localhost:\d+/g)];
+      if (matches.length) setDevUrl(matches[matches.length - 1][0].replace(/\/$/, ''));
+    });
+  }, [devTermId]);
 
   const save = async () => {
     const titleVal = title || task.title;
@@ -297,7 +310,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-5">
         <input
           type="text"
           value={title}
@@ -306,16 +319,107 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
           className="w-full bg-transparent text-white text-lg font-semibold focus:outline-none border-b border-transparent focus:border-gray-700 pb-1 transition-colors"
         />
 
-        <EditableField
-          value={description}
-          onChange={setDescription}
-          onSave={save}
-          placeholder="Add a description..."
-        />
+        {/* ── Action bar (non-Backlog tasks) ── */}
+        {task.status !== 'Backlog' && (
+          <div className="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden">
+            {/* Agent row */}
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${claudeTermId ? 'bg-emerald-400' : 'bg-gray-700'}`} />
+                <span className="text-xs text-gray-500 font-mono">Agent</span>
+                {claudeTermId && hasStickyTerminal && <span className="text-xs text-gray-600 italic truncate">open in floating window</span>}
+                {claudeTermId && !hasStickyTerminal && <span className="text-xs text-gray-600 italic truncate">running</span>}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {claudeTermId ? (
+                  <button
+                    onClick={async () => {
+                      send({ type: 'terminal-input', terminalId: claudeTermId, data: '/exit\r' });
+                      await new Promise(r => setTimeout(r, 2000));
+                      await killTerminal(claudeTermId);
+                      setClaudeTermId(null);
+                      onUpdate();
+                    }}
+                    className="px-2.5 py-1 bg-gray-800 hover:bg-red-900/60 border border-gray-700 hover:border-red-800 text-gray-300 hover:text-red-300 rounded text-xs font-medium transition-colors"
+                  >
+                    End session
+                  </button>
+                ) : (
+                  <>
+                    {task.claudeSessionId && (
+                      <button
+                        onClick={() => handleLaunchClaude(true)}
+                        disabled={launching}
+                        className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-50 text-gray-300 rounded text-xs font-medium transition-colors"
+                      >
+                        {launching ? '...' : 'New'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleLaunchClaude(false)}
+                      disabled={launching}
+                      className="px-3 py-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+                    >
+                      {launching ? 'Launching...' : task.claudeSessionId ? 'Re-open Agent' : 'Launch Agent'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Dev server row */}
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${devTermId ? 'bg-blue-400' : 'bg-gray-700'}`} />
+                <span className="text-xs text-gray-500 font-mono">Dev{devPort ? ` :${devPort}` : ''}</span>
+                {devTermId && devUrl && (
+                  <a href={devUrl} target="_blank" rel="noreferrer"
+                    className="text-xs text-gray-600 hover:text-blue-400 transition-colors truncate"
+                    onClick={e => e.stopPropagation()}
+                  >↗ {devUrl.replace('http://', '')}</a>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {devTermId ? (
+                  <>
+                    <button onClick={handleStartDev} disabled={devStarting}
+                      className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded text-xs transition-colors disabled:opacity-50"
+                    >
+                      {devStarting ? '...' : 'Restart'}
+                    </button>
+                    <button onClick={handleStopDev}
+                      className="px-2.5 py-1 bg-gray-800 hover:bg-red-900/60 border border-gray-700 hover:border-red-800 text-gray-300 hover:text-red-300 rounded text-xs transition-colors"
+                    >
+                      Stop
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={handleStartDev} disabled={devStarting}
+                    className="px-3 py-1 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+                  >
+                    {devStarting ? 'Starting...' : 'Start Dev Server'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {launchError && <p className="text-red-400 text-xs -mt-3">{launchError}</p>}
+
+        {/* ── Description ── */}
+        <div>
+          <EditableField
+            value={description}
+            onChange={setDescription}
+            onSave={save}
+            placeholder="Add a description..."
+          />
+        </div>
 
         {/* Meta */}
         {(task.branch || task.worktreePath) && (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 pt-1">
             {task.branch && (
               <div className="flex items-center gap-2 text-xs text-gray-600">
                 <span className="w-16 shrink-0">Branch</span>
@@ -331,39 +435,10 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
           </div>
         )}
 
+        {/* ── Terminals (shown when active) ── */}
         {task.status !== 'Backlog' && (<>
-          {/* ── Claude terminal ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-600 font-mono uppercase tracking-wider">Claude Agent</span>
-              {!claudeTermId && (
-                <div className="flex items-center gap-1.5">
-                  {task.claudeSessionId && (
-                    <button
-                      onClick={() => handleLaunchClaude(true)}
-                      disabled={launching}
-                      className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
-                    >
-                      {launching ? 'Launching...' : 'New Agent'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleLaunchClaude(false)}
-                    disabled={launching}
-                    className={`px-3 py-1.5 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors ${
-                      task.claudeSessionId ? 'bg-gray-700 hover:bg-gray-600' : 'bg-emerald-800 hover:bg-emerald-700'
-                    }`}
-                  >
-                    {launching ? 'Launching...' : task.claudeSessionId ? 'Re-open Agent' : 'Launch Agent'}
-                  </button>
-                </div>
-              )}
-            </div>
-            {launchError && <p className="text-red-400 text-xs">{launchError}</p>}
-            {claudeTermId && hasStickyTerminal && (
-              <p className="text-xs text-gray-600 italic">Terminal open in floating window</p>
-            )}
-            {claudeTermId && !hasStickyTerminal && (
+          {claudeTermId && !hasStickyTerminal && (
+            <div className="space-y-1.5">
               <div className={`border rounded-lg overflow-hidden flex flex-col ${terminalColor ? terminalColor.border : 'border-gray-800'}`} style={{ height: termHeight }}>
                 <div className={`text-xs px-2 py-1 border-b font-mono shrink-0 flex items-center justify-between ${terminalColor ? `${terminalColor.headerBg} ${terminalColor.headerText} ${terminalColor.headerBorder}` : 'text-gray-600 border-gray-800 bg-gray-900/80'}`}>
                   <span>claude — {task.worktreePath || project.path}</span>
@@ -385,90 +460,42 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
                   <Terminal terminalId={claudeTermId} />
                 </div>
               </div>
-            )}
-            {claudeTermId && !hasStickyTerminal && (
               <div
-                className="h-1.5 rounded cursor-row-resize bg-gray-800 hover:bg-blue-600 transition-colors"
+                className="h-2 rounded cursor-row-resize flex items-center justify-center bg-gray-800/50 hover:bg-blue-600/30 transition-colors group"
                 onMouseDown={handleResizeMouseDown}
-              />
-            )}
-          </div>
-
-          {/* ── Dev server terminal ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-600 font-mono uppercase tracking-wider">
-                Dev Server{devPort ? ` :${devPort}` : ''}
-              </span>
-              <div className="flex items-center gap-1.5">
-                {devTermId && (
-                  <>
-                    <button
-                      onClick={handleStartDev}
-                      disabled={devStarting}
-                      className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded text-xs transition-colors disabled:opacity-50"
-                    >
-                      {devStarting ? 'Restarting...' : 'Restart'}
-                    </button>
-                    <button
-                      onClick={handleStopDev}
-                      className="px-2.5 py-1 bg-gray-800 hover:bg-red-900/60 border border-gray-700 hover:border-red-800 text-gray-300 hover:text-red-300 rounded text-xs transition-colors"
-                    >
-                      Stop
-                    </button>
-                  </>
-                )}
-                {!devTermId && (
-                  <button
-                    onClick={handleStartDev}
-                    disabled={devStarting}
-                    className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
-                  >
-                    {devStarting ? 'Starting...' : 'Start Dev Server'}
-                  </button>
-                )}
-              </div>
-            </div>
-            {devTermId && (
-              <div className="border border-gray-800 rounded-lg overflow-hidden flex flex-col" style={{ height: termHeight }}>
-                <div className="text-xs text-gray-600 px-2 py-1 border-b border-gray-800 bg-gray-900/80 font-mono shrink-0">
-                  npm run dev — {task.worktreePath || project.path}
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <Terminal terminalId={devTermId} />
+              >
+                <div className="flex gap-1">
+                  {[0,1,2,3].map(i => <div key={i} className="w-0.5 h-0.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" />)}
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Browser / Preview */}
-          {devPort && devTermId && (
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <a
-                  href={`http://localhost:${devPort}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white rounded text-xs font-medium transition-colors"
-                >
-                  Open in Browser ↗
-                </a>
-                <button
-                  onClick={() => setShowIframe(v => !v)}
-                  className="px-3 py-1.5 border border-gray-800 hover:border-gray-700 text-gray-500 hover:text-white rounded text-xs transition-colors"
-                >
-                  {showIframe ? 'Hide Preview' : 'Show Preview'}
-                </button>
-                {showIframe && <span className="text-xs text-gray-700">(may not load due to CORS)</span>}
-              </div>
-              {showIframe && (
-                <iframe
-                  src={`http://localhost:${devPort}`}
-                  className="w-full h-64 mt-2 border border-gray-800 rounded-lg bg-white"
-                  title="Dev Preview"
-                />
-              )}
             </div>
+          )}
+
+          {devTermId && (
+            <div className="border border-gray-800 rounded-lg overflow-hidden flex flex-col" style={{ height: termHeight }}>
+              <div className="text-xs text-gray-600 px-2 py-1 border-b border-gray-800 bg-gray-900/80 font-mono shrink-0">
+                npm run dev — {task.worktreePath || project.path}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <Terminal terminalId={devTermId} />
+              </div>
+            </div>
+          )}
+
+          {devUrl && devTermId && showIframe && (
+            <iframe
+              src={devUrl}
+              className="w-full h-64 border border-gray-800 rounded-lg bg-white"
+              title="Dev Preview"
+            />
+          )}
+          {devUrl && devTermId && (
+            <button
+              onClick={() => setShowIframe(v => !v)}
+              className="px-3 py-1.5 border border-gray-800 hover:border-gray-700 text-gray-500 hover:text-white rounded text-xs transition-colors"
+            >
+              {showIframe ? 'Hide Preview' : 'Show Preview'}
+            </button>
           )}
         </>)}
       </div>

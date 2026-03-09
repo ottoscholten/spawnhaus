@@ -8,7 +8,11 @@ body {
   margin: 0;
   background: #0d1117;
   color: #c9d1d9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.font-mono, code, pre {
+  font-family: 'DM Mono', 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }

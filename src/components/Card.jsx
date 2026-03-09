@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOpenTerminal, terminalColor }) {
+export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOpenTerminal, terminalColor, hasDevServer, devPort }) {
   const {
     attributes,
     listeners,
@@ -13,7 +13,7 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
 
   const borderCls = hasActiveTerminal && terminalColor
     ? `border-2 ${terminalColor.border}`
-    : 'border border-gray-800 hover:border-gray-700';
+    : 'border border-gray-700/50 hover:border-gray-600 hover:shadow-md hover:-translate-y-px';
 
   return (
     <div
@@ -26,7 +26,7 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`bg-gray-900 ${borderCls} rounded-lg p-3 cursor-pointer select-none transition-colors group`}
+      className={`bg-gray-900 ${borderCls} rounded-lg p-3 cursor-pointer select-none transition-all group`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -37,6 +37,21 @@ export function Card({ task, onClick, isDone, onArchive, hasActiveTerminal, onOp
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {hasDevServer && devPort && (
+            <a
+              href={`http://localhost:${devPort}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-blue-500 hover:text-blue-300 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-800 transition-colors"
+              title={`Open localhost:${devPort}`}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1"/>
+                <path d="M6.5 1c0 0-2 2-2 5.5s2 5.5 2 5.5M6.5 1c0 0 2 2 2 5.5S6.5 12 6.5 12M1 6.5h11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+              </svg>
+            </a>
+          )}
           {hasActiveTerminal && (
             <button
               onClick={e => { e.stopPropagation(); onOpenTerminal(task); }}

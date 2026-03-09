@@ -624,7 +624,7 @@ export function SettingsPanel({ project, board, onClose, onBoardSaved, onChangeP
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
               <Tabs.Content value="skills"  className="outline-none data-[state=inactive]:hidden"><SkillsTab project={project} /></Tabs.Content>
               <Tabs.Content value="agents"  className="outline-none data-[state=inactive]:hidden"><AgentsTab project={project} /></Tabs.Content>
               <Tabs.Content value="plugins" className="outline-none data-[state=inactive]:hidden"><PluginsTab /></Tabs.Content>

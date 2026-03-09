@@ -41,11 +41,11 @@ export function ProjectPicker({ onSelect }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
+    <div className="h-screen bg-gray-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white tracking-tight">Spawnhaus</h1>
-          <p className="text-gray-600 text-sm mt-1">Local AI agent task board</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight font-mono">spawnhaus<span className="text-blue-500 animate-pulse">_</span></h1>
+          <p className="text-gray-500 text-sm mt-1">vibe coding project hub</p>
         </div>
 
         <form onSubmit={handleOpen} className="mb-8">

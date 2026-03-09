@@ -60,19 +60,19 @@ export function NewTaskForm({ project, onClose, onCreated }) {
             </button>
             <div className="flex gap-2">
               <button
-                type="submit"
-                disabled={loading || !title.trim()}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
-              >
-                {loading ? 'Creating...' : 'Add to Backlog'}
-              </button>
-              <button
                 type="button"
                 onClick={() => handleSubmit('Scoping')}
                 disabled={loading || !title.trim()}
-                className="px-4 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded text-sm font-medium transition-colors"
               >
                 {loading ? 'Creating...' : 'Start Scoping'}
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !title.trim()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-sm font-medium transition-colors"
+              >
+                {loading ? 'Creating...' : 'Add to Backlog'}
               </button>
             </div>
           </div>

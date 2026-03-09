@@ -19,7 +19,7 @@ export function Column({ id, title, tasks, onTaskClick, onArchive, activeTermina
         <span className={`text-xs font-semibold uppercase tracking-wider ${HEADER_STYLE[title]}`}>
           {title}
         </span>
-        <span className="text-xs text-gray-700 bg-gray-800 px-1.5 py-0.5 rounded-full tabular-nums">
+        <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded-full tabular-nums">
           {tasks.length}
         </span>
       </div>
@@ -41,6 +41,8 @@ export function Column({ id, title, tasks, onTaskClick, onArchive, activeTermina
                 hasActiveTerminal={!!activeTerminals?.[task.id]}
                 onOpenTerminal={onOpenTerminal}
                 terminalColor={activeTerminals?.[task.id] ? terminalColorMap?.[task.id] : null}
+                hasDevServer={!!activeTerminals?.[task.id + ':dev']}
+                devPort={task.devPort}
               />
             ))}
           </div>
