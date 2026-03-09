@@ -122,9 +122,11 @@ function SkillsTab({ project }) {
   const [viewing, setViewing] = useState(null);
   const [installing, setInstalling] = useState({});
 
-  useEffect(() => {
+  const load = useCallback(() => {
     getSkills(project.path).then(setData).catch(() => setData({ skills: [], commands: [] }));
   }, [project.path]);
+
+  useEffect(() => { load(); }, [load]);
 
   const installed = data ? [...(data.skills || []), ...(data.commands || [])] : null;
   const installedIds = new Set(installed?.map(s => s.id) || []);
@@ -132,7 +134,7 @@ function SkillsTab({ project }) {
 
   const handleInstall = async (skill) => {
     setInstalling(prev => ({ ...prev, [skill.id]: true }));
-    try { await createTerminal(project.path, `claude plugin install ${skill.id}@claude-code-plugins`); }
+    try { await createTerminal(project.path, `claude plugin install ${skill.id}@claude-code-plugins`); load(); }
     finally { setInstalling(prev => ({ ...prev, [skill.id]: false })); }
   };
 
@@ -151,8 +153,7 @@ function SkillsTab({ project }) {
                 No skills in <CodeChip>.claude/skills/</CodeChip> or <CodeChip>.claude/commands/</CodeChip>
               </EmptyState>
             ) : (
-              <Tooltip.Provider delayDuration={400}>
-                <ItemList>
+              <ItemList>
                   {installed.map(item => (
                     <Tooltip.Root key={item.id}>
                       <Tooltip.Trigger asChild>
@@ -176,7 +177,6 @@ function SkillsTab({ project }) {
                     </Tooltip.Root>
                   ))}
                 </ItemList>
-              </Tooltip.Provider>
             )}
           </div>
 
@@ -372,7 +372,7 @@ function PromptsTab() {
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef(null);
 
-  useEffect(() => { getPrompts().then(setPrompts); }, []);
+  useEffect(() => { getPrompts().then(setPrompts).catch(() => setPrompts({ scopingPrompt: '', implementationPrompt: '' })); }, []);
   useEffect(() => () => clearTimeout(savedTimer.current), []);
 
   const handleSave = async () => {

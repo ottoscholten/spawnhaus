@@ -61,6 +61,14 @@ Rules:
 
 Please implement this task.`,
 };
+const isRegisteredProject = (p) => {
+  if (!p) return false;
+  try {
+    const projects = fs.existsSync(projectsFile) ? JSON.parse(fs.readFileSync(projectsFile, 'utf8')) : [];
+    return projects.some(pr => pr.path === p);
+  } catch { return false; }
+};
+
 const kanbanDir = (p) => path.join(p, '.kanban');
 const boardFile = (p) => path.join(p, '.kanban', 'board.json');
 const archiveDir = (p) => path.join(p, '.kanban', 'archive');
@@ -521,7 +529,7 @@ app.get('/api/terminal/task/:taskId', (req, res) => {
 // Skills
 app.get('/api/skills', (req, res) => {
   const { projectPath } = req.query;
-  if (!projectPath) return res.json({ skills: [], commands: [] });
+  if (!projectPath || !isRegisteredProject(projectPath)) return res.json({ skills: [], commands: [] });
 
   const parseFrontmatter = (content, fallbackName) => {
     let name = fallbackName, description = '';
@@ -593,13 +601,16 @@ app.delete('/api/plugins/:name', (req, res) => {
   try {
     const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     if (settings.mcpServers) delete settings.mcpServers[req.params.name];
-    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    const tmp = settingsFile + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(settings, null, 2));
+    fs.renameSync(tmp, settingsFile);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/kill-port', (req, res) => {
-  const { port } = req.body;
+  const port = parseInt(req.body.port, 10);
+  if (!port || port < 1 || port > 65535) return res.status(400).json({ error: 'Invalid port' });
   try { execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: 'pipe' }); } catch {}
   res.json({ ok: true });
 });
