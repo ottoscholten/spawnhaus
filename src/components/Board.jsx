@@ -11,13 +11,14 @@ import {
 } from '@dnd-kit/core';
 
 // Colors chosen to not clash with column header colors (blue=In Progress, purple=Scoping, yellow=Review, green=Done)
+// Orange/amber is reserved for the Orchestrator — task terminals never use it
 const TERMINAL_COLORS = [
-  { border: 'border-orange-500',  headerBg: 'bg-orange-900/40',  headerText: 'text-orange-300',  headerBorder: 'border-orange-800/60',  icon: 'text-orange-400' },
   { border: 'border-rose-500',    headerBg: 'bg-rose-900/40',    headerText: 'text-rose-300',    headerBorder: 'border-rose-800/60',    icon: 'text-rose-400' },
   { border: 'border-fuchsia-500', headerBg: 'bg-fuchsia-900/40', headerText: 'text-fuchsia-300', headerBorder: 'border-fuchsia-800/60', icon: 'text-fuchsia-400' },
   { border: 'border-teal-500',    headerBg: 'bg-teal-900/40',    headerText: 'text-teal-300',    headerBorder: 'border-teal-800/60',    icon: 'text-teal-400' },
   { border: 'border-indigo-500',  headerBg: 'bg-indigo-900/40',  headerText: 'text-indigo-300',  headerBorder: 'border-indigo-800/60',  icon: 'text-indigo-400' },
   { border: 'border-lime-500',    headerBg: 'bg-lime-900/40',    headerText: 'text-lime-300',    headerBorder: 'border-lime-800/60',    icon: 'text-lime-400' },
+  { border: 'border-sky-500',     headerBg: 'bg-sky-900/40',     headerText: 'text-sky-300',     headerBorder: 'border-sky-800/60',     icon: 'text-sky-400' },
 ];
 
 function taskColor(taskId) {
@@ -39,10 +40,10 @@ import { NewTaskForm } from './NewTaskForm';
 import { Terminal } from './Terminal';
 import { SettingsPanel } from './SettingsPanel';
 import { RECOMMENDED_AGENTS } from '../recommendations';
-import { getTasks, updateTask, archiveTask, getActiveTerminals, getAgents } from '../api';
+import { getTasks, updateTask, archiveTask, getActiveTerminals, getAgents, createTerminal, killTerminal, updateBoardSettings, createWorktree } from '../api';
 import { on } from '../ws';
 
-const COLUMNS = ['Backlog', 'Scoping', 'In Progress', 'Review', 'Done'];
+const COLUMNS = ['Backlog', 'Ready', 'Scoping', 'In Progress', 'Review', 'Done'];
 
 function ArchiveDropZone({ isActive }) {
   const { setNodeRef, isOver } = useDroppable({ id: '__archive__' });
@@ -135,6 +136,70 @@ function StickyTerminal({ task, terminalId, index, onClose, color }) {
   );
 }
 
+function OrchestratorTerminal({ terminalId, onClose, onEndSession, onNewSession }) {
+  const [pos, setPos] = useState(() => ({ x: 20, y: Math.max(60, window.innerHeight - 360) }));
+  const [size, setSize] = useState({ w: 580, h: 320 });
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
+  const onMouseDown = (e) => {
+    dragging.current = true;
+    dragOffset.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    const onMove = (ev) => { if (dragging.current) setPos({ x: ev.clientX - dragOffset.current.x, y: ev.clientY - dragOffset.current.y }); };
+    const onUp = () => { dragging.current = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  const onResizeMouseDown = (e) => {
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY, startW = size.w, startH = size.h;
+    const onMove = (ev) => setSize({ w: Math.max(400, startW + ev.clientX - startX), h: Math.max(240, startH + ev.clientY - startY) });
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  return (
+    <div
+      style={{ position: 'fixed', left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 300 }}
+      className="bg-gray-950 border border-amber-800/50 rounded-xl shadow-2xl flex flex-col overflow-hidden"
+      onClick={e => e.stopPropagation()}
+    >
+      <div
+        onMouseDown={onMouseDown}
+        className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-amber-800/40 bg-amber-950/50 cursor-grab active:cursor-grabbing select-none"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-amber-500 text-sm">⬡</span>
+          <span className="text-amber-300 text-xs font-semibold tracking-wide">Orchestrator</span>
+          <div className="flex items-center gap-1" onMouseDown={e => e.stopPropagation()}>
+            <button
+              onClick={onNewSession}
+              className="text-amber-800 hover:text-amber-300 text-xs px-2 py-0.5 rounded hover:bg-amber-900/40 transition-colors"
+              title="Clear session and start fresh next time"
+            >New</button>
+            <button
+              onClick={onEndSession}
+              className="text-amber-800 hover:text-amber-300 text-xs px-2 py-0.5 rounded hover:bg-amber-900/40 transition-colors"
+              title="End session (saves for resume)"
+            >End session</button>
+          </div>
+        </div>
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={onClose}
+          className="text-amber-800 hover:text-amber-300 text-lg leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-amber-900/40 transition-colors"
+        >×</button>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <Terminal terminalId={terminalId} fontSize={12} />
+      </div>
+      <div onMouseDown={onResizeMouseDown} className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" />
+    </div>
+  );
+}
+
 export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   const [board, setBoard] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -144,12 +209,19 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   const [dragging, setDragging] = useState(null);
   const [activeTerminals, setActiveTerminals] = useState({});
   const [stickyTerminals, setStickyTerminals] = useState([]);
+  const [showOrchestrator, setShowOrchestrator] = useState(false);
+  const relaunchingOrchestrator = useRef(false);
+  const [needsAttention, setNeedsAttention] = useState(new Set());
+  const attentionTimers = useRef({});
+  const [devUrls, setDevUrls] = useState({});
+  const activeTerminalsRef = useRef({});
 
   const fetchBoard = useCallback(async () => {
     try {
       const [data, active] = await Promise.all([getTasks(project.path), getActiveTerminals(project.path)]);
       setBoard(data);
       setActiveTerminals(active);
+      activeTerminalsRef.current = active;
     } catch {}
   }, [project.path]);
 
@@ -173,6 +245,40 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
   }, [board]);
 
   useEffect(() => on('board-update', fetchBoard), [fetchBoard]);
+
+  // Attention detection: terminal idle for 5s after activity = needs attention
+  // Also parse dev server URLs from terminal output
+  useEffect(() => on('terminal-output', ({ terminalId, data }) => {
+    clearTimeout(attentionTimers.current[terminalId]);
+    setNeedsAttention(prev => {
+      if (!prev.has(terminalId)) return prev;
+      const next = new Set(prev); next.delete(terminalId); return next;
+    });
+    attentionTimers.current[terminalId] = setTimeout(() => {
+      setNeedsAttention(prev => new Set([...prev, terminalId]));
+    }, 5000);
+    // Parse dev server URL
+    const devEntry = Object.entries(activeTerminalsRef.current).find(([k, v]) => v === terminalId && k.endsWith(':dev'));
+    if (devEntry && data) {
+      const matches = [...data.matchAll(/https?:\/\/localhost:\d+/g)];
+      if (matches.length) {
+        const taskId = devEntry[0].replace(':dev', '');
+        const url = matches[matches.length - 1][0].replace(/\/$/, '');
+        setDevUrls(prev => prev[taskId] === url ? prev : { ...prev, [taskId]: url });
+      }
+    }
+  }), []);
+
+  useEffect(() => on('terminal-exit', ({ terminalId }) => {
+    clearTimeout(attentionTimers.current[terminalId]);
+    delete attentionTimers.current[terminalId];
+    setNeedsAttention(prev => { const next = new Set(prev); next.delete(terminalId); return next; });
+    const devEntry = Object.entries(activeTerminalsRef.current).find(([k, v]) => v === terminalId && k.endsWith(':dev'));
+    if (devEntry) {
+      const taskId = devEntry[0].replace(':dev', '');
+      setDevUrls(prev => { const next = { ...prev }; delete next[taskId]; return next; });
+    }
+  }), []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -210,16 +316,74 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
       tasks: prev.tasks.map(t => t.id === task.id ? { ...t, status: targetStatus } : t),
     }));
 
-    await updateTask(project.path, task.id, { status: targetStatus });
+    const updatedTask = await updateTask(project.path, task.id, { status: targetStatus });
+    if (targetStatus === 'Scoping' && !task.worktreePath) {
+      const wt = await createWorktree(project.path, updatedTask.id);
+      await updateTask(project.path, updatedTask.id, { worktreePath: wt.worktreePath, branch: wt.branch });
+    }
     fetchBoard();
+  };
+
+  const clearAttention = (terminalId) => {
+    if (!terminalId) return;
+    clearTimeout(attentionTimers.current[terminalId]);
+    setNeedsAttention(prev => { const next = new Set(prev); next.delete(terminalId); return next; });
   };
 
   const handleOpenTerminal = (task) => {
     const terminalId = activeTerminals[task.id];
     if (!terminalId) return;
+    clearAttention(terminalId);
     setStickyTerminals(prev => prev.find(s => s.task.id === task.id)
       ? prev
       : [...prev, { task, terminalId }]);
+  };
+
+  // Hide orchestrator panel when its terminal exits (skip if we're relaunching)
+  useEffect(() => {
+    if (!activeTerminals['__orchestrator__'] && !relaunchingOrchestrator.current) setShowOrchestrator(false);
+  }, [activeTerminals]);
+
+  const launchOrchestrator = async () => {
+    const data = await fetch('/api/orchestrator/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectPath: project.path }),
+    }).then(r => r.json());
+    if (data.terminalId) return; // already running
+    await createTerminal(data.cwd, data.command, data.message, data.taskId, data.projectPath);
+    await fetchBoard();
+  };
+
+  const handleOrchestratorClick = async () => {
+    if (activeTerminals['__orchestrator__']) {
+      clearAttention(activeTerminals['__orchestrator__']);
+      setShowOrchestrator(s => !s);
+      return;
+    }
+    try {
+      await launchOrchestrator();
+      setShowOrchestrator(true);
+    } catch {}
+  };
+
+  const handleEndOrchestratorSession = async () => {
+    const termId = activeTerminals['__orchestrator__'];
+    if (termId) await killTerminal(termId);
+    // fetchBoard will be triggered by board-update broadcast on terminal exit
+  };
+
+  const handleNewOrchestratorSession = async () => {
+    const termId = activeTerminals['__orchestrator__'];
+    relaunchingOrchestrator.current = true;
+    try {
+      if (termId) await killTerminal(termId);
+      await updateBoardSettings(project.path, { orchestratorSessionId: null });
+      await launchOrchestrator();
+      setShowOrchestrator(true);
+    } finally {
+      relaunchingOrchestrator.current = false;
+    }
   };
 
   const handleArchive = async (task) => {
@@ -242,9 +406,12 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
 
   const tasksByCol = (col) => board.tasks.filter(t => t.status === col);
   const terminalColorMap = Object.fromEntries(Object.keys(activeTerminals).map(id => [id, taskColor(id)]));
+  const openStickyTerminalIds = new Set(stickyTerminals.map(s => s.terminalId));
+  const effectiveNeedsAttention = new Set([...needsAttention].filter(tid => !openStickyTerminalIds.has(tid)));
+  const orchestratorNeedsAttention = !showOrchestrator && needsAttention.has(activeTerminals['__orchestrator__']);
 
   return (
-    <div className="h-screen bg-gray-950 flex flex-col overflow-hidden">
+    <div className="h-screen bg-gray-950 flex flex-col overflow-hidden" onClick={() => { if (showOrchestrator) { clearAttention(activeTerminals['__orchestrator__']); setShowOrchestrator(false); } }}>
       {notice && (
         <div className="shrink-0 bg-emerald-900/40 border-b border-emerald-800/50 px-5 py-2 flex items-center justify-between">
           <span className="text-xs text-emerald-400">{notice}</span>
@@ -298,7 +465,7 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className={`flex gap-4 p-5 flex-1 ${selectedTask ? 'overflow-hidden' : 'overflow-x-auto'}`}>
+          <div className={`flex gap-4 p-5 flex-1 h-full ${selectedTask ? 'overflow-hidden' : 'overflow-x-auto overflow-y-hidden'}`}>
             {COLUMNS.map(col => (
               <Column
                 key={col}
@@ -310,9 +477,15 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
                   setShowSettings(false);
                 }}
                 onArchive={handleArchive}
+                onMoveToReady={async (task) => {
+                  await updateTask(project.path, task.id, { status: 'Ready' });
+                  fetchBoard();
+                }}
                 activeTerminals={activeTerminals}
                 onOpenTerminal={handleOpenTerminal}
                 terminalColorMap={terminalColorMap}
+                needsAttention={effectiveNeedsAttention}
+                devUrls={devUrls}
               />
             ))}
             <ArchiveDropZone isActive={dragging?.status === 'Done'} />
@@ -329,8 +502,8 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
 
         {selectedTask && (
           <>
-            <div className="absolute left-0 top-0 bottom-0 w-2/5 z-10" onClick={() => setSelectedTask(null)} />
-            <div className="absolute right-0 top-0 bottom-0 w-3/5 z-20 shadow-2xl border-l border-gray-800">
+            <div className="absolute left-0 top-0 bottom-0 w-2/5 z-[390]" onClick={() => setSelectedTask(null)} />
+            <div className="absolute right-0 top-0 bottom-0 w-3/5 z-[400] shadow-2xl border-l border-gray-800">
               <TicketPanel
                 task={selectedTask}
                 project={project}
@@ -369,10 +542,36 @@ export function Board({ project, onChangeProject, notice, onDismissNotice }) {
           task={task}
           terminalId={terminalId}
           index={i}
-          onClose={() => setStickyTerminals(prev => prev.filter(s => s.task.id !== task.id))}
+          onClose={() => { clearAttention(terminalId); setStickyTerminals(prev => prev.filter(s => s.task.id !== task.id)); }}
           color={taskColor(task.id)}
         />
       ))}
+
+      {/* Orchestrator sticky button */}
+      <button
+        onClick={e => { e.stopPropagation(); handleOrchestratorClick(); }}
+        className={`fixed bottom-5 left-5 z-[350] flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium shadow-lg border transition-colors ${
+          activeTerminals['__orchestrator__']
+            ? 'bg-amber-950/90 border-amber-700/60 text-amber-300 hover:bg-amber-900/90'
+            : 'bg-gray-900/90 border-gray-700/60 text-gray-400 hover:text-amber-300 hover:border-amber-800/60 hover:bg-amber-950/60'
+        } ${orchestratorNeedsAttention ? 'ring-2 ring-amber-300 animate-pulse' : ''}`}
+        title="Orchestrator — project-level planning agent"
+      >
+        <span className={activeTerminals['__orchestrator__'] ? 'text-amber-500' : 'text-gray-600'}>⬡</span>
+        <span>Orchestrator</span>
+        {activeTerminals['__orchestrator__'] && (
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+        )}
+      </button>
+
+      {showOrchestrator && activeTerminals['__orchestrator__'] && (
+        <OrchestratorTerminal
+          terminalId={activeTerminals['__orchestrator__']}
+          onClose={() => { clearAttention(activeTerminals['__orchestrator__']); setShowOrchestrator(false); }}
+          onEndSession={handleEndOrchestratorSession}
+          onNewSession={handleNewOrchestratorSession}
+        />
+      )}
     </div>
   );
 }

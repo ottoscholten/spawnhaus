@@ -4,9 +4,13 @@ import { on, send } from '../ws';
 export function Terminal({ terminalId, fontSize = 12 }) {
   const containerRef = useRef(null);
   const xtermRef = useRef(null);
+  const termInstanceRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [dragOver, setDragOver] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
   const dragCounter = useRef(0);
+  const autoScrollRef = useRef(true);
+  const writingRef = useRef(false);
 
   useEffect(() => {
     const reset = () => { dragCounter.current = 0; setDragOver(false); };
@@ -35,6 +39,9 @@ export function Terminal({ terminalId, fontSize = 12 }) {
           selectionBackground: '#264f78',
           black: '#484f58',
           brightBlack: '#6e7681',
+          scrollbarSliderBackground: 'rgba(255,255,255,0.1)',
+          scrollbarSliderHoverBackground: 'rgba(255,255,255,0.2)',
+          scrollbarSliderActiveBackground: 'rgba(255,255,255,0.3)',
         },
         fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
         fontSize,
@@ -46,6 +53,7 @@ export function Terminal({ terminalId, fontSize = 12 }) {
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
+      termInstanceRef.current = term;
 
       setTimeout(() => {
         try { fitAddon.fit(); } catch {}
@@ -54,29 +62,33 @@ export function Terminal({ terminalId, fontSize = 12 }) {
 
       send({ type: 'attach-terminal', terminalId });
 
-      const isAtBottom = { current: true };
-      let replayDone = false;
+      autoScrollRef.current = true;
 
       term.onScroll(() => {
-        if (!replayDone) return;
         const { viewportY, baseY } = term.buffer.active;
-        isAtBottom.current = viewportY >= baseY;
+        const atBottom = viewportY >= baseY;
+        // Ignore scrolls caused by escape sequences during writes — only track user-initiated scrolls
+        if (!writingRef.current) autoScrollRef.current = atBottom;
+        setShowScrollDown(!atBottom);
       });
 
       const unsub = on('terminal-output', (msg) => {
         if (msg.terminalId === terminalId) {
-          term.write(msg.data);
-          if (!replayDone) {
-            term.scrollToBottom();
-            replayDone = true;
-          } else if (isAtBottom.current) {
-            term.scrollToBottom();
-          }
+          writingRef.current = true;
+          term.write(msg.data, () => {
+            writingRef.current = false;
+            if (autoScrollRef.current) {
+              term.scrollToBottom();
+              setShowScrollDown(false);
+            } else {
+              const { viewportY, baseY } = term.buffer.active;
+              setShowScrollDown(viewportY < baseY);
+            }
+          });
         }
       });
 
       term.onData(data => {
-        isAtBottom.current = true;
         send({ type: 'terminal-input', terminalId, data });
       });
       term.onResize(({ cols, rows }) => send({ type: 'terminal-resize', terminalId, cols, rows }));
@@ -91,6 +103,7 @@ export function Terminal({ terminalId, fontSize = 12 }) {
           unsub();
           ro.disconnect();
           term.dispose();
+          termInstanceRef.current = null;
         },
       };
     }
@@ -126,6 +139,14 @@ export function Terminal({ terminalId, fontSize = 12 }) {
     }
   };
 
+  const scrollToBottom = () => {
+    const term = termInstanceRef.current;
+    if (!term) return;
+    autoScrollRef.current = true;
+    term.scrollToBottom();
+    setShowScrollDown(false);
+  };
+
   return (
     <div
       style={{ height: '100%', width: '100%', background: '#0d1117', position: 'relative' }}
@@ -145,6 +166,32 @@ export function Terminal({ terminalId, fontSize = 12 }) {
         </div>
       )}
       <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+      {showScrollDown && (
+        <button
+          onClick={scrollToBottom}
+          style={{
+            position: 'absolute',
+            bottom: 10,
+            right: 18,
+            zIndex: 20,
+            background: 'rgba(15,20,30,0.85)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            color: 'rgba(255,255,255,0.6)',
+            fontSize: 14,
+            width: 26,
+            height: 26,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+          }}
+          title="Scroll to bottom"
+        >
+          ↓
+        </button>
+      )}
     </div>
   );
 }

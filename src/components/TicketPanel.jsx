@@ -6,10 +6,23 @@ import { updateTask, createTerminal, killTerminal, assignPort, createWorktree, g
 import { Terminal } from './Terminal';
 import { on, send } from '../ws';
 
-const STATUSES = ['Backlog', 'Scoping', 'In Progress', 'Review', 'Done'];
+const STATUSES = ['Backlog', 'Ready', 'Scoping', 'In Progress', 'Review', 'Done'];
+const PRIORITIES = ['high', 'medium', 'low'];
+
+const PRIORITY_STYLE = {
+  high:   'bg-red-900/60 text-red-300',
+  medium: 'bg-amber-900/60 text-amber-300',
+  low:    'bg-blue-900/60 text-blue-300',
+};
+const PRIORITY_DOT = {
+  high:   'bg-red-400',
+  medium: 'bg-amber-400',
+  low:    'bg-blue-400',
+};
 
 const STATUS_STYLE = {
   'Backlog':     'bg-gray-800 text-gray-400',
+  'Ready':       'bg-cyan-900/60 text-cyan-300',
   'Scoping':     'bg-purple-900/60 text-purple-300',
   'In Progress': 'bg-blue-900/60 text-blue-300',
   'Review':      'bg-yellow-900/60 text-yellow-300',
@@ -18,6 +31,7 @@ const STATUS_STYLE = {
 
 const STATUS_DOT = {
   'Backlog':     'bg-gray-500',
+  'Ready':       'bg-cyan-400',
   'Scoping':     'bg-purple-400',
   'In Progress': 'bg-blue-400',
   'Review':      'bg-yellow-400',
@@ -228,6 +242,52 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
         <span className="text-xs text-gray-600 font-mono">{task.id}</span>
         <div className="flex items-center gap-2">
 
+          {/* Priority dropdown */}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors outline-none ${task.priority ? PRIORITY_STYLE[task.priority] : 'bg-gray-800/60 text-gray-600 hover:text-gray-400'}`}>
+                {task.priority ? task.priority : 'priority'} ▾
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={6}
+                className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-1 min-w-[8rem] z-[500] outline-none"
+              >
+                {PRIORITIES.map(p => (
+                  <DropdownMenu.Item
+                    key={p}
+                    onSelect={async () => {
+                      await updateTask(project.path, task.id, { priority: p });
+                      onUpdate();
+                    }}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none select-none
+                      data-[highlighted]:bg-gray-800 transition-colors
+                      ${task.priority === p ? 'opacity-40 pointer-events-none' : 'text-gray-300'}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${PRIORITY_DOT[p]}`} />
+                    {p}
+                  </DropdownMenu.Item>
+                ))}
+                {task.priority && (
+                  <>
+                    <DropdownMenu.Separator className="my-1 h-px bg-gray-800" />
+                    <DropdownMenu.Item
+                      onSelect={async () => {
+                        await updateTask(project.path, task.id, { priority: null });
+                        onUpdate();
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none select-none text-gray-600 hover:text-gray-400 data-[highlighted]:bg-gray-800 transition-colors"
+                    >
+                      clear
+                    </DropdownMenu.Item>
+                  </>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+
           {/* Status dropdown */}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -239,7 +299,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
               <DropdownMenu.Content
                 align="end"
                 sideOffset={6}
-                className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-1 min-w-[9rem] z-30 outline-none"
+                className="bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-1 min-w-[9rem] z-[500] outline-none"
               >
                 {STATUSES.map(s => (
                   <DropdownMenu.Item
@@ -275,8 +335,8 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
                 </button>
               </Dialog.Trigger>
               <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 bg-black/70 z-50" />
-                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm shadow-2xl z-50 outline-none">
+                <Dialog.Overlay className="fixed inset-0 bg-black/70 z-[600]" />
+                <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm shadow-2xl z-[600] outline-none">
                   <Dialog.Title className="text-white font-semibold mb-1">Delete task?</Dialog.Title>
                   <Dialog.Description className="text-sm text-gray-500 mb-5 truncate">
                     "{task.title}"
@@ -320,7 +380,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
         />
 
         {/* ── Action bar (non-Backlog tasks) ── */}
-        {task.status !== 'Backlog' && (
+        {task.status !== 'Backlog' && task.status !== 'Ready' && (
           <div className="rounded-lg border border-gray-800 divide-y divide-gray-800 overflow-hidden">
             {/* Agent row */}
             <div className="flex items-center justify-between gap-3 px-3 py-2.5">
@@ -436,7 +496,7 @@ export function TicketPanel({ task, project, onClose, onUpdate, activeTerminals,
         )}
 
         {/* ── Terminals (shown when active) ── */}
-        {task.status !== 'Backlog' && (<>
+        {task.status !== 'Backlog' && task.status !== 'Ready' && (<>
           {claudeTermId && !hasStickyTerminal && (
             <div className="space-y-1.5">
               <div className={`border rounded-lg overflow-hidden flex flex-col ${terminalColor ? terminalColor.border : 'border-gray-800'}`} style={{ height: termHeight }}>

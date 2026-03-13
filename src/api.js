@@ -96,14 +96,17 @@ export const setActiveProject = (p) =>
     body: JSON.stringify({ path: p }),
   });
 
-export const getPrompts = () =>
-  fetch(`${BASE}/api/prompts`).then(r => r.json());
+export const getPrompts = (projectPath) =>
+  fetch(`${BASE}/api/prompts?projectPath=${encodeURIComponent(projectPath)}`).then(r => r.json());
 
-export const updatePrompts = (prompts) =>
+export const getDefaultPrompts = () =>
+  fetch(`${BASE}/api/prompts/defaults`).then(r => r.json());
+
+export const updatePrompts = (projectPath, prompts) =>
   fetch(`${BASE}/api/prompts`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(prompts),
+    body: JSON.stringify({ projectPath, ...prompts }),
   }).then(r => r.json());
 
 export const getSkills = (projectPath) =>

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as Separator from '@radix-ui/react-separator';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { getSkills, getAgents, getPlugins, deletePlugin, createTerminal, getPrompts, updatePrompts, updateBoardSettings } from '../api';
+import { getSkills, getAgents, getPlugins, deletePlugin, createTerminal, getPrompts, getDefaultPrompts, updatePrompts, updateBoardSettings } from '../api';
 import { RECOMMENDED_SKILLS, RECOMMENDED_AGENTS } from '../recommendations';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -364,89 +364,149 @@ function PluginsTab() {
   );
 }
 
-// ─── Prompts ──────────────────────────────────────────────────────────────────
+// ─── Workflow ─────────────────────────────────────────────────────────────────
 
-function PromptsTab() {
+const PROMPT_FIELDS = [
+  { key: 'orchestratorPrompt',    label: 'Orchestrator Prompt',    color: 'amber'  },
+  { key: 'scopingPrompt',         label: 'Scoping Prompt',         color: 'purple' },
+  { key: 'implementationPrompt',  label: 'Implementation Prompt',  color: 'blue'   },
+];
+
+function WorkflowTab({ board, project, onBoardSaved }) {
+  const [sub, setSub] = useState('prompts');
+
+  // Prompts state
   const [prompts, setPrompts] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const savedTimer = useRef(null);
+  const [defaults, setDefaults] = useState(null);
+  const [savingPrompts, setSavingPrompts] = useState(false);
+  const [savedPrompts, setSavedPrompts] = useState(false);
+  const promptsTimer = useRef(null);
 
-  useEffect(() => { getPrompts().then(setPrompts).catch(() => setPrompts({ scopingPrompt: '', implementationPrompt: '' })); }, []);
-  useEffect(() => () => clearTimeout(savedTimer.current), []);
+  // Quality checks state
+  const [qualityChecks, setQualityChecks] = useState((board.qualityChecks || []).join('\n'));
+  const [savingChecks, setSavingChecks] = useState(false);
+  const [savedChecks, setSavedChecks] = useState(false);
+  const checksTimer = useRef(null);
 
-  const handleSave = async () => {
+  useEffect(() => {
+    Promise.all([getPrompts(project.path), getDefaultPrompts()])
+      .then(([p, d]) => { setPrompts(p); setDefaults(d); })
+      .catch(() => {});
+  }, [project.path]);
+  useEffect(() => () => { clearTimeout(promptsTimer.current); clearTimeout(checksTimer.current); }, []);
+
+  const handleSavePrompts = async () => {
     if (!prompts) return;
-    setSaving(true);
+    setSavingPrompts(true);
     try {
-      await updatePrompts(prompts);
-      setSaved(true);
-      savedTimer.current = setTimeout(() => setSaved(false), 1500);
-    } finally {
-      setSaving(false);
-    }
+      await updatePrompts(project.path, prompts);
+      setSavedPrompts(true);
+      promptsTimer.current = setTimeout(() => setSavedPrompts(false), 1500);
+    } finally { setSavingPrompts(false); }
   };
 
-  if (!prompts) return <div className="px-8 py-7"><LoadingState /></div>;
+  const handleSaveChecks = async () => {
+    setSavingChecks(true);
+    try {
+      const checks = qualityChecks.split('\n').map(l => l.trim()).filter(Boolean);
+      await updateBoardSettings(project.path, { qualityChecks: checks });
+      onBoardSaved();
+      setSavedChecks(true);
+      checksTimer.current = setTimeout(() => setSavedChecks(false), 1500);
+    } finally { setSavingChecks(false); }
+  };
+
+  const colorBorder  = { amber: 'border-amber-700/40',  purple: 'border-purple-700/40',  blue: 'border-blue-700/40'  };
+  const colorLabel   = { amber: 'text-amber-500/80',     purple: 'text-purple-500/80',    blue: 'text-blue-500/80'    };
+  const colorDivider = { amber: 'bg-amber-900/30',       purple: 'bg-purple-900/30',      blue: 'bg-blue-900/30'      };
+
+  const subTabCls = (key) => `px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors outline-none ${
+    sub === key ? 'bg-white/[0.06] text-white' : 'text-gray-500 hover:text-gray-300'
+  }`;
 
   return (
-    <div className="px-8 py-7 max-w-2xl space-y-6">
-      <p className="text-[11px] text-gray-600 leading-relaxed">
-        Stored in <CodeChip>~/.spawnhaus/prompts.json</CodeChip>.{' '}
-        Available variables:{' '}
-        {['{taskId}', '{title}', '{description}', '{branch}'].map(v => (
-          <CodeChip key={v}>{v}</CodeChip>
-        ))}
-      </p>
-
-      <div className="space-y-5">
-        <div>
-          <label className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-mono font-semibold tracking-[0.18em] uppercase text-purple-500/80">Scoping Prompt</span>
-            <div className="flex-1 h-px bg-purple-900/30" />
-          </label>
-          <textarea
-            value={prompts.scopingPrompt}
-            onChange={e => setPrompts(p => ({ ...p, scopingPrompt: e.target.value }))}
-            rows={8}
-            className="w-full bg-[#0d0d12] border border-white/[0.07] focus:border-purple-700/40 text-gray-300 text-[12px] px-4 py-3 rounded-lg outline-none resize-y font-mono leading-relaxed transition-colors"
-          />
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-mono font-semibold tracking-[0.18em] uppercase text-blue-500/80">Implementation Prompt</span>
-            <div className="flex-1 h-px bg-blue-900/30" />
-          </label>
-          <textarea
-            value={prompts.implementationPrompt}
-            onChange={e => setPrompts(p => ({ ...p, implementationPrompt: e.target.value }))}
-            rows={8}
-            className="w-full bg-[#0d0d12] border border-white/[0.07] focus:border-blue-700/40 text-gray-300 text-[12px] px-4 py-3 rounded-lg outline-none resize-y font-mono leading-relaxed transition-colors"
-          />
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Sub-tab bar */}
+      <div className="shrink-0 flex items-center gap-1 px-8 pt-6 pb-0">
+        <button className={subTabCls('prompts')} onClick={() => setSub('prompts')}>Prompts</button>
+        <button className={subTabCls('checks')} onClick={() => setSub('checks')}>Quality Checks</button>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-            saved
-              ? 'bg-emerald-900/40 border border-emerald-800/60 text-emerald-400'
-              : 'bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white'
-          } disabled:opacity-50`}
-        >
-          {saved ? '✓ Saved' : saving ? 'Saving…' : 'Save changes'}
-        </button>
+      <div className="flex-1 overflow-y-auto">
+        {/* Prompts sub-tab */}
+        {sub === 'prompts' && (
+          <div className="px-8 py-6 max-w-2xl space-y-6">
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              Saved per-project in <CodeChip>.kanban/board.json</CodeChip>.{' '}
+              Variables: {['{taskId}', '{title}', '{branch}', '{projectName}', '{projectPath}'].map(v => (
+                <CodeChip key={v}>{v}</CodeChip>
+              ))}
+            </p>
+            {!prompts || !defaults ? <LoadingState /> : (
+              <div className="space-y-5">
+                {PROMPT_FIELDS.map(({ key, label, color }) => {
+                  const isModified = prompts[key] !== defaults[key];
+                  return (
+                    <div key={key}>
+                      <label className="flex items-center gap-2 mb-2">
+                        <span className={`text-[10px] font-mono font-semibold tracking-[0.18em] uppercase ${colorLabel[color]}`}>{label}</span>
+                        {isModified && <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-orange-900/40 border border-orange-800/50 text-orange-400">modified</span>}
+                        <div className={`flex-1 h-px ${colorDivider[color]}`} />
+                        {isModified && (
+                          <button onClick={() => setPrompts(p => ({ ...p, [key]: defaults[key] }))} className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors shrink-0">
+                            reset to default
+                          </button>
+                        )}
+                      </label>
+                      <textarea
+                        value={prompts[key]}
+                        onChange={e => setPrompts(p => ({ ...p, [key]: e.target.value }))}
+                        rows={8}
+                        className={`w-full bg-[#0d0d12] border text-gray-300 text-[12px] px-4 py-3 rounded-lg outline-none resize-y font-mono leading-relaxed transition-colors ${
+                          isModified ? `border-orange-900/50 focus:${colorBorder[color]}` : `border-white/[0.07] focus:${colorBorder[color]}`
+                        }`}
+                      />
+                    </div>
+                  );
+                })}
+                <div className="flex justify-end">
+                  <button onClick={handleSavePrompts} disabled={savingPrompts} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${savedPrompts ? 'bg-emerald-900/40 border border-emerald-800/60 text-emerald-400' : 'bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white'}`}>
+                    {savedPrompts ? '✓ Saved' : savingPrompts ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quality Checks sub-tab */}
+        {sub === 'checks' && (
+          <div className="px-8 py-6 max-w-2xl space-y-6">
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              One command per line. Run automatically when an agent moves a task to Review — results are injected back as a message. Commands run in the task's worktree directory.
+            </p>
+            <textarea
+              value={qualityChecks}
+              onChange={e => setQualityChecks(e.target.value)}
+              placeholder={'npm run type-check\n../../node_modules/.bin/vitest run'}
+              rows={8}
+              className="w-full bg-[#0d0d12] border border-white/[0.07] focus:border-blue-700/40 text-white px-4 py-3 rounded-lg text-xs outline-none font-mono transition-colors resize-y placeholder:text-gray-700"
+            />
+            <div className="flex justify-end">
+              <button onClick={handleSaveChecks} disabled={savingChecks} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${savedChecks ? 'bg-emerald-900/40 border border-emerald-800/60 text-emerald-400' : 'bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white'}`}>
+                {savedChecks ? '✓ Saved' : savingChecks ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Board ────────────────────────────────────────────────────────────────────
+// ─── Project ──────────────────────────────────────────────────────────────────
 
-function BoardTab({ board, project, onSaved }) {
+function ProjectTab({ board, project, onSaved }) {
   const [nextId, setNextId] = useState(String(board.nextId));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -463,9 +523,7 @@ function BoardTab({ board, project, onSaved }) {
       onSaved();
       setSaved(true);
       savedTimer.current = setTimeout(() => setSaved(false), 1500);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (
@@ -476,28 +534,16 @@ function BoardTab({ board, project, onSaved }) {
           <div className="flex-1 h-px bg-white/[0.04]" />
         </label>
         <input
-          type="number"
-          min="1"
-          value={nextId}
+          type="number" min="1" value={nextId}
           onChange={e => setNextId(e.target.value)}
           className="w-40 bg-[#0d0d12] border border-white/[0.07] focus:border-blue-700/40 text-white px-4 py-2.5 rounded-lg text-sm outline-none font-mono transition-colors"
         />
         <p className="text-[11px] text-gray-600 mt-2">
-          Next task will be{' '}
-          <span className="font-mono text-gray-400">TASK-{String(nextId).padStart(3, '0')}</span>
+          Next task will be <span className="font-mono text-gray-400">TASK-{String(nextId).padStart(3, '0')}</span>
         </p>
       </div>
-
       <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-            saved
-              ? 'bg-emerald-900/40 border border-emerald-800/60 text-emerald-400'
-              : 'bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white'
-          } disabled:opacity-50`}
-        >
+        <button onClick={handleSave} disabled={saving} className={`px-4 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${saved ? 'bg-emerald-900/40 border border-emerald-800/60 text-emerald-400' : 'bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white'}`}>
           {saved ? '✓ Saved' : saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
@@ -527,12 +573,12 @@ const NAV_ICONS = {
       <rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1"/>
     </svg>
   ),
-  prompts: (
+  workflow: (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M2 3h10M2 7h7M2 11h5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
     </svg>
   ),
-  board: (
+  project: (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1"/>
       <path d="M1.5 5.5h11" stroke="currentColor" strokeWidth="1"/>
@@ -544,11 +590,11 @@ const NAV_ICONS = {
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 const TABS = [
-  ['skills',  'Skills'],
-  ['agents',  'Agents'],
-  ['plugins', 'Plugins'],
-  ['prompts', 'Prompts'],
-  ['board',   'Board'],
+  ['skills',    'Skills'],
+  ['agents',    'Agents'],
+  ['plugins',   'Plugins'],
+  ['workflow',  'Workflow'],
+  ['project',   'Project'],
 ];
 
 export function SettingsPanel({ project, board, onClose, onBoardSaved, onChangeProject }) {
@@ -560,7 +606,7 @@ export function SettingsPanel({ project, board, onClose, onBoardSaved, onChangeP
 
   return (
     <Tooltip.Provider delayDuration={400}>
-      <div className="fixed inset-0 z-30 flex bg-[#06060a]">
+      <div className="fixed inset-0 z-[400] flex bg-[#06060a]">
         <Tabs.Root defaultValue="skills" orientation="vertical" className="flex flex-1 min-h-0">
 
           {/* ── Left sidebar nav ── */}
@@ -628,9 +674,11 @@ export function SettingsPanel({ project, board, onClose, onBoardSaved, onChangeP
               <Tabs.Content value="skills"  className="outline-none data-[state=inactive]:hidden"><SkillsTab project={project} /></Tabs.Content>
               <Tabs.Content value="agents"  className="outline-none data-[state=inactive]:hidden"><AgentsTab project={project} /></Tabs.Content>
               <Tabs.Content value="plugins" className="outline-none data-[state=inactive]:hidden"><PluginsTab /></Tabs.Content>
-              <Tabs.Content value="prompts" className="outline-none data-[state=inactive]:hidden"><PromptsTab /></Tabs.Content>
-              <Tabs.Content value="board"   className="outline-none data-[state=inactive]:hidden">
-                {board && <BoardTab board={board} project={project} onSaved={onBoardSaved} />}
+              <Tabs.Content value="workflow" className="outline-none data-[state=inactive]:hidden h-full">
+                {board && <WorkflowTab board={board} project={project} onBoardSaved={onBoardSaved} />}
+              </Tabs.Content>
+              <Tabs.Content value="project" className="outline-none data-[state=inactive]:hidden">
+                {board && <ProjectTab board={board} project={project} onSaved={onBoardSaved} />}
               </Tabs.Content>
             </div>
           </div>

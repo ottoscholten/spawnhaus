@@ -20,7 +20,7 @@ export function NewTaskForm({ project, onClose, onCreated }) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-[450]"
       onClick={onClose}
     >
       <div
@@ -61,11 +61,11 @@ export function NewTaskForm({ project, onClose, onCreated }) {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => handleSubmit('Scoping')}
+                onClick={() => handleSubmit('Ready')}
                 disabled={loading || !title.trim()}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded text-sm font-medium transition-colors"
               >
-                {loading ? 'Creating...' : 'Start Scoping'}
+                {loading ? 'Creating...' : 'Add to Ready'}
               </button>
               <button
                 type="submit"
