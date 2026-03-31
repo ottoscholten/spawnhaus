@@ -1,9 +1,16 @@
 let socket = null;
+let wasConnected = false;
 const handlers = new Map();
 
 function connect() {
   const wsHost = window.location.host;
   socket = new WebSocket(`ws://${wsHost}/ws`);
+  socket.onopen = () => {
+    if (wasConnected) {
+      (handlers.get('__reconnect__') || []).forEach(h => h());
+    }
+    wasConnected = true;
+  };
   socket.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);

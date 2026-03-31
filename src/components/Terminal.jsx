@@ -88,6 +88,11 @@ export function Terminal({ terminalId, fontSize = 12 }) {
         }
       });
 
+      // Re-attach after WebSocket reconnect so the server sends output to the new socket
+      const unsubReconnect = on('__reconnect__', () => {
+        send({ type: 'attach-terminal', terminalId });
+      });
+
       term.onData(data => {
         send({ type: 'terminal-input', terminalId, data });
       });
@@ -101,6 +106,7 @@ export function Terminal({ terminalId, fontSize = 12 }) {
       xtermRef.current = {
         cleanup: () => {
           unsub();
+          unsubReconnect();
           ro.disconnect();
           term.dispose();
           termInstanceRef.current = null;
